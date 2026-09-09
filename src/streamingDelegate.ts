@@ -202,7 +202,7 @@ export class StreamingDelegate implements CameraStreamingDelegate {
         '-profile:a', 'aac_eld',
         '-ar', String(request.audio.sample_rate * 1000),
         '-b:a', `${request.audio.max_bit_rate}k`,
-        '-ac', '1',
+        '-ac', String(request.audio.channel),
         '-flags', '+global_header',
         '-payload_type', String(request.audio.pt),
         '-ssrc', String(toFfmpegSsrc(request.audio.ssrc)),
