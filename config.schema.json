@@ -60,7 +60,7 @@
             "name": {
               "title": "Name",
               "type": "string",
-              "default": "Haustür",
+              "placeholder": "z. B. Haustür",
               "required": true
             },
             "host": {
