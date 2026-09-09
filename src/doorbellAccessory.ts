@@ -75,7 +75,7 @@ export class DoorbellAccessory {
       },
     };
 
-    if (cameraConfig.enableHksv) {
+    if (cameraConfig.enableHksv !== false) {
       this.recordingDelegate = new RecordingDelegate(this.hap, log, cameraConfig, this.reolink, ffmpegPath, debug);
       controllerOptions = {
         ...controllerOptions,

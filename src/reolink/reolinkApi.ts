@@ -35,7 +35,9 @@ export class ReolinkApi {
     this.http = axios.create({
       baseURL: `${useHttps ? 'https' : 'http'}://${config.host}:${port}`,
       timeout: 10000,
-      httpsAgent: useHttps ? new https.Agent({ rejectUnauthorized: !config.allowInsecureHttps }) : undefined,
+      // Reolink devices almost always use a self-signed certificate, so insecure HTTPS is
+      // accepted by default; only an explicit `false` opts back into certificate validation.
+      httpsAgent: useHttps ? new https.Agent({ rejectUnauthorized: config.allowInsecureHttps === false }) : undefined,
     });
   }
 
