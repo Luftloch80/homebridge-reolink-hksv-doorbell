@@ -1,0 +1,56 @@
+{
+  "displayName": "Reolink HKSV Doorbell",
+  "name": "homebridge-reolink-hksv-doorbell",
+  "version": "1.0.0",
+  "description": "Homebridge plugin for Reolink doorbells and cameras with HomeKit Secure Video (HKSV) support, fully configurable via Homebridge UI.",
+  "license": "MIT",
+  "author": "luftloch80",
+  "homepage": "https://github.com/luftloch80/homebridge-reolink-hksv-doorbell#readme",
+  "bugs": {
+    "url": "https://github.com/luftloch80/homebridge-reolink-hksv-doorbell/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/luftloch80/homebridge-reolink-hksv-doorbell.git"
+  },
+  "main": "dist/index.js",
+  "engines": {
+    "node": "^18.15.0 || ^20.7.0 || ^22",
+    "homebridge": "^1.8.0 || ^2.0.0-beta.0"
+  },
+  "files": [
+    "dist",
+    "config.schema.json",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "rimraf ./dist && tsc",
+    "prepublishOnly": "npm run lint && npm run build",
+    "lint": "eslint \"src/**/*.ts\""
+  },
+  "keywords": [
+    "homebridge-plugin",
+    "reolink",
+    "doorbell",
+    "camera",
+    "hksv",
+    "homekit-secure-video",
+    "video-doorbell"
+  ],
+  "dependencies": {
+    "@homebridge/camera-utils": "^3.0.0",
+    "axios": "^1.7.7"
+  },
+  "optionalDependencies": {
+    "ffmpeg-for-homebridge": "~2.1.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@typescript-eslint/eslint-plugin": "^8.15.0",
+    "@typescript-eslint/parser": "^8.15.0",
+    "eslint": "^9.15.0",
+    "homebridge": "^1.8.4",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.7.2"
+  }
+}

@@ -1,0 +1,208 @@
+{
+  "pluginAlias": "ReolinkHksvDoorbell",
+  "pluginType": "platform",
+  "singular": true,
+  "headerDisplay": "Konfiguriere deine Reolink Kameras und Video-Türklingeln. Für HomeKit Secure Video und die Live-Ansicht wird ein `ffmpeg`-Binary benötigt — standardmäßig wird das mitgelieferte `ffmpeg-for-homebridge` verwendet.",
+  "footerDisplay": "Weitere Informationen findest du in der [README](https://github.com/luftloch80/homebridge-reolink-hksv-doorbell#readme).",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "ffmpegPath": {
+        "title": "Eigener ffmpeg-Pfad",
+        "type": "string",
+        "placeholder": "/usr/bin/ffmpeg",
+        "description": "Optional. Leer lassen, um das mitgelieferte ffmpeg zu verwenden."
+      },
+      "debug": {
+        "title": "Debug-Logging (inkl. ffmpeg-Ausgabe)",
+        "type": "boolean",
+        "default": false
+      },
+      "cameras": {
+        "title": "Kameras",
+        "type": "array",
+        "minItems": 0,
+        "items": {
+          "type": "object",
+          "title": "Kamera",
+          "properties": {
+            "name": {
+              "title": "Name",
+              "type": "string",
+              "default": "Haustür",
+              "required": true
+            },
+            "host": {
+              "title": "IP-Adresse / Hostname",
+              "type": "string",
+              "required": true,
+              "description": "IP-Adresse der Kamera/Türklingel oder des NVR."
+            },
+            "port": {
+              "title": "HTTP(S)-Port",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535,
+              "placeholder": "443 (HTTPS) / 80 (HTTP)"
+            },
+            "username": {
+              "title": "Benutzername",
+              "type": "string",
+              "required": true,
+              "default": "admin"
+            },
+            "password": {
+              "title": "Passwort",
+              "type": "string",
+              "required": true,
+              "format": "password"
+            },
+            "useHttps": {
+              "title": "HTTPS verwenden",
+              "type": "boolean",
+              "default": true
+            },
+            "allowInsecureHttps": {
+              "title": "Selbstsignierte Zertifikate akzeptieren",
+              "type": "boolean",
+              "default": true,
+              "description": "Reolink-Geräte verwenden meist ein selbstsigniertes Zertifikat."
+            },
+            "channel": {
+              "title": "Kanal (bei NVR)",
+              "type": "integer",
+              "default": 0,
+              "minimum": 0,
+              "description": "0 für eigenständige Kameras/Türklingeln."
+            },
+            "rtspPort": {
+              "title": "RTSP-Port",
+              "type": "integer",
+              "default": 554,
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "isDoorbell": {
+              "title": "Als Türklingel (Doorbell) anzeigen",
+              "type": "boolean",
+              "default": true,
+              "description": "Zeigt einen Klingel-Knopf in HomeKit an und löst Benachrichtigungen beim Klingeln aus."
+            },
+            "ringTrigger": {
+              "title": "Klingel-Ereignisquelle",
+              "type": "string",
+              "default": "visitor",
+              "enum": ["visitor", "people", "md"],
+              "enumNames": ["Besucher-Erkennung (visitor, empfohlen)", "Personenerkennung (people)", "Bewegungsmelder (md)"],
+              "description": "Welches Reolink-Ereignis als Klingeln interpretiert wird."
+            },
+            "enableMotion": {
+              "title": "Bewegungssensor aktivieren",
+              "type": "boolean",
+              "default": true
+            },
+            "enableHksv": {
+              "title": "HomeKit Secure Video (HKSV) aktivieren",
+              "type": "boolean",
+              "default": true,
+              "description": "Erfordert einen HomeKit Hub (Apple TV / HomePod / iPad) mit aktiviertem Secure Video Abo in der Home-App."
+            },
+            "enableAudio": {
+              "title": "Audio aktivieren (Live-Ansicht & Aufnahme)",
+              "type": "boolean",
+              "default": true
+            },
+            "liveStream": {
+              "title": "Stream für Live-Ansicht",
+              "type": "string",
+              "default": "main",
+              "enum": ["main", "sub", "ext"],
+              "enumNames": ["Hauptstream (main)", "Substream (sub)", "Erweitert (ext)"]
+            },
+            "recordingStream": {
+              "title": "Stream für HKSV-Aufnahme",
+              "type": "string",
+              "default": "sub",
+              "enum": ["main", "sub", "ext"],
+              "enumNames": ["Hauptstream (main)", "Substream (sub, empfohlen)", "Erweitert (ext)"],
+              "description": "Ein niedrig auflösender Stream reduziert die CPU-Last, da HKSV im Hintergrund dauerhaft transkodiert."
+            },
+            "prebufferLength": {
+              "title": "Prebuffer-Länge (ms)",
+              "type": "integer",
+              "default": 4000,
+              "minimum": 4000,
+              "maximum": 8000
+            },
+            "fragmentLength": {
+              "title": "Fragment-Länge (ms)",
+              "type": "integer",
+              "default": 4000,
+              "minimum": 1000,
+              "maximum": 8000
+            },
+            "pollInterval": {
+              "title": "Abfrageintervall für Ereignisse (ms)",
+              "type": "integer",
+              "default": 2000,
+              "minimum": 500,
+              "maximum": 10000,
+              "description": "Wie oft die Kamera nach Klingel-/Bewegungsereignissen abgefragt wird."
+            },
+            "maxBitrate": {
+              "title": "Maximale Bitrate Live-Ansicht (kbps)",
+              "type": "integer",
+              "minimum": 300,
+              "maximum": 8000,
+              "placeholder": "z.B. 2000"
+            }
+          }
+        }
+      }
+    }
+  },
+  "layout": [
+    {
+      "type": "fieldset",
+      "title": "Allgemein",
+      "items": ["ffmpegPath", "debug"]
+    },
+    {
+      "key": "cameras",
+      "type": "array",
+      "title": "Kameras",
+      "items": [
+        {
+          "type": "fieldset",
+          "title": "Verbindung",
+          "items": [
+            "cameras[].name",
+            "cameras[].host",
+            "cameras[].port",
+            "cameras[].username",
+            "cameras[].password",
+            "cameras[].useHttps",
+            "cameras[].allowInsecureHttps",
+            "cameras[].channel",
+            "cameras[].rtspPort"
+          ]
+        },
+        {
+          "type": "fieldset",
+          "title": "Türklingel & Sensoren",
+          "items": ["cameras[].isDoorbell", "cameras[].ringTrigger", "cameras[].enableMotion", "cameras[].pollInterval"]
+        },
+        {
+          "type": "fieldset",
+          "title": "Video & Audio",
+          "items": ["cameras[].liveStream", "cameras[].maxBitrate", "cameras[].enableAudio"]
+        },
+        {
+          "type": "fieldset",
+          "title": "HomeKit Secure Video",
+          "items": ["cameras[].enableHksv", "cameras[].recordingStream", "cameras[].prebufferLength", "cameras[].fragmentLength"]
+        }
+      ]
+    }
+  ]
+}
