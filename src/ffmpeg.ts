@@ -45,7 +45,10 @@ export class FfmpegProcess {
       this.process.once('error', (error) => {
         reject(error);
       });
-      this.process.once('exit', (code, signal) => {
+      // 'close' (not 'exit') is used deliberately: 'exit' can fire before the stderr stream has
+      // finished delivering its buffered 'data' events, which previously produced error messages
+      // with an empty stderr tail even though ffmpeg had actually logged the real failure reason.
+      this.process.once('close', (code, signal) => {
         if (code === null || code === 0 || signal === 'SIGKILL' || signal === 'SIGTERM') {
           resolve();
         } else {

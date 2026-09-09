@@ -62,6 +62,7 @@ export class ReolinkApi {
         action: 0,
         param: {
           User: {
+            Version: '0',
             userName: this.config.username,
             password: this.config.password,
           },
