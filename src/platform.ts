@@ -75,6 +75,7 @@ export class ReolinkHksvDoorbellPlatform implements DynamicPlatformPlugin {
       configuredUuids.add(uuid);
 
       const existingAccessory = this.accessories.find((accessory) => accessory.UUID === uuid);
+      const category = cameraConfig.isDoorbell !== false ? this.api.hap.Categories.VIDEO_DOORBELL : this.api.hap.Categories.CAMERA;
 
       let accessory: PlatformAccessory;
       if (existingAccessory) {
@@ -82,11 +83,21 @@ export class ReolinkHksvDoorbellPlatform implements DynamicPlatformPlugin {
         existingAccessory.displayName = cameraConfig.name;
         existingAccessory.context.cameraConfig = cameraConfig;
         accessory = existingAccessory;
+
+        // The doorbell/camera category is only picked up by the Home app when it changes here,
+        // not retroactively - an accessory previously cached as CAMERA (e.g. "Als Türklingel
+        // anzeigen" was off, or this plugin predates this fix) stays a plain camera in the Home
+        // app's own UI even after isDoorbell is enabled, until it is refreshed like this and, if
+        // needed, removed and re-added in the Home app.
+        if (accessory.category !== category) {
+          this.log.info(`[${cameraConfig.name}] Doorbell setting changed, updating accessory category`);
+          accessory.category = category;
+          this.api.updatePlatformAccessories([accessory]);
+        }
       } else {
         this.log.info(`Adding new accessory: ${cameraConfig.name}`);
         accessory = new this.api.platformAccessory(cameraConfig.name, uuid);
         accessory.context.cameraConfig = cameraConfig;
-        const category = cameraConfig.isDoorbell !== false ? this.api.hap.Categories.VIDEO_DOORBELL : this.api.hap.Categories.CAMERA;
         accessory.category = category;
         this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
         this.accessories.push(accessory);
