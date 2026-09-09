@@ -16,7 +16,11 @@ export type StreamQuality = 'main' | 'sub' | 'ext';
 export interface CameraConfig {
   /** Friendly name shown in HomeKit. */
   name: string;
-  /** Hostname or IP address of the camera or the NVR the camera is connected to. */
+  /**
+   * Hostname or IP address of the camera or the NVR the camera is connected to.
+   * May include a trailing ":port" (e.g. "192.168.1.50:8443"); if present it is
+   * split into `host`/`port` before this config is used elsewhere.
+   */
   host: string;
   /** HTTP(S) API port. Defaults to 443 when useHttps is true, otherwise 80. */
   port?: number;
@@ -67,7 +71,9 @@ export interface CameraConfig {
 export interface MqttBrokerConfig {
   /** Enable the shared MQTT connection used for `ringTrigger: "mqtt"` cameras. */
   enabled?: boolean;
+  /** Broker hostname/IP, optionally with a trailing ":port" (e.g. "192.168.1.20:1883"). */
   host: string;
+  /** Defaults to 1883 (or 8883 when `useTls` is set) if not given and not embedded in `host`. */
   port?: number;
   username?: string;
   password?: string;

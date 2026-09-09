@@ -28,16 +28,10 @@
             "default": false
           },
           "host": {
-            "title": "Broker-Host",
+            "title": "MQTT-Broker-Adresse",
             "type": "string",
-            "placeholder": "192.168.1.20"
-          },
-          "port": {
-            "title": "Broker-Port",
-            "type": "integer",
-            "default": 1883,
-            "minimum": 1,
-            "maximum": 65535
+            "placeholder": "192.168.1.20 oder 192.168.1.20:1883",
+            "description": "IP-Adresse oder Hostname des Brokers, optional mit \":Port\" (Standard: 1883)."
           },
           "username": {
             "title": "Benutzername",
@@ -70,17 +64,11 @@
               "required": true
             },
             "host": {
-              "title": "IP-Adresse / Hostname",
+              "title": "Kamera-Adresse",
               "type": "string",
               "required": true,
-              "description": "IP-Adresse der Kamera/Türklingel oder des NVR."
-            },
-            "port": {
-              "title": "HTTP(S)-Port",
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 65535,
-              "placeholder": "443 (HTTPS) / 80 (HTTP)"
+              "placeholder": "192.168.1.50 oder 192.168.1.50:443",
+              "description": "IP-Adresse/Hostname der Kamera, Türklingel oder des NVR, optional mit \":Port\"."
             },
             "username": {
               "title": "Benutzername",
@@ -225,7 +213,7 @@
       "type": "fieldset",
       "title": "MQTT-Broker",
       "description": "Nur nötig, wenn mindestens eine Kamera unten die Klingel-Ereignisquelle \"MQTT\" verwendet.",
-      "items": ["mqtt.enabled", "mqtt.host", "mqtt.port", "mqtt.username", "mqtt.password", "mqtt.useTls"]
+      "items": ["mqtt.enabled", "mqtt.host", "mqtt.username", "mqtt.password", "mqtt.useTls"]
     },
     {
       "key": "cameras",
@@ -234,40 +222,39 @@
       "items": [
         {
           "type": "fieldset",
-          "title": "Verbindung",
-          "items": [
-            "cameras[].name",
-            "cameras[].host",
-            "cameras[].port",
-            "cameras[].username",
-            "cameras[].password",
-            "cameras[].useHttps",
-            "cameras[].allowInsecureHttps",
-            "cameras[].channel",
-            "cameras[].rtspPort"
-          ]
+          "title": "Kamera",
+          "items": ["cameras[].name", "cameras[].host", "cameras[].username", "cameras[].password"]
         },
         {
           "type": "fieldset",
-          "title": "Türklingel & Sensoren",
-          "items": [
-            "cameras[].isDoorbell",
-            "cameras[].ringTrigger",
-            "cameras[].mqttRingTopic",
-            "cameras[].mqttRingPayload",
-            "cameras[].enableMotion",
-            "cameras[].pollInterval"
-          ]
-        },
-        {
-          "type": "fieldset",
-          "title": "Video & Audio",
-          "items": ["cameras[].liveStream", "cameras[].maxBitrate", "cameras[].enableAudio"]
+          "title": "Türklingel",
+          "items": ["cameras[].isDoorbell", "cameras[].ringTrigger", "cameras[].mqttRingTopic"]
         },
         {
           "type": "fieldset",
           "title": "HomeKit Secure Video",
-          "items": ["cameras[].enableHksv", "cameras[].recordingStream", "cameras[].prebufferLength", "cameras[].fragmentLength"]
+          "items": ["cameras[].enableHksv"]
+        },
+        {
+          "type": "fieldset",
+          "title": "Erweitert",
+          "expandable": true,
+          "expanded": false,
+          "items": [
+            "cameras[].useHttps",
+            "cameras[].allowInsecureHttps",
+            "cameras[].channel",
+            "cameras[].rtspPort",
+            "cameras[].mqttRingPayload",
+            "cameras[].enableMotion",
+            "cameras[].pollInterval",
+            "cameras[].liveStream",
+            "cameras[].recordingStream",
+            "cameras[].enableAudio",
+            "cameras[].maxBitrate",
+            "cameras[].prebufferLength",
+            "cameras[].fragmentLength"
+          ]
         }
       ]
     }

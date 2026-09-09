@@ -1,6 +1,7 @@
 import type { API, DynamicPlatformPlugin, Logger, PlatformAccessory, PlatformConfig } from 'homebridge';
 import type { CameraConfig, ReolinkPlatformConfig } from './configTypes';
 import { DoorbellAccessory } from './doorbellAccessory';
+import { splitHostPort } from './hostPort';
 import { MqttService } from './mqttService';
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
 
@@ -37,6 +38,21 @@ export class ReolinkHksvDoorbellPlatform implements DynamicPlatformPlugin {
 
     if (cameras.length === 0) {
       this.log.warn('No cameras configured. Add at least one camera in the Homebridge UI plugin settings.');
+    }
+
+    // The UI offers a single "address" field for both the camera and the MQTT broker
+    // (optionally "host:port"); split that into host/port here before anything else uses it.
+    for (const cameraConfig of cameras) {
+      if (cameraConfig.host && cameraConfig.port === undefined) {
+        const { host, port } = splitHostPort(cameraConfig.host);
+        cameraConfig.host = host;
+        cameraConfig.port = port;
+      }
+    }
+    if (platformConfig.mqtt?.host && platformConfig.mqtt.port === undefined) {
+      const { host, port } = splitHostPort(platformConfig.mqtt.host);
+      platformConfig.mqtt.host = host;
+      platformConfig.mqtt.port = port;
     }
 
     const needsMqtt = cameras.some((camera) => camera.ringTrigger === 'mqtt');

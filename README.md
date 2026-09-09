@@ -45,21 +45,26 @@ npm install -g homebridge-reolink-hksv-doorbell
 ## Konfiguration
 
 Nach der Installation erscheint das Plugin in der Homebridge-UI unter *Plugins* mit einem
-*Einstellungen*-Button. Dort lässt sich für jede Kamera Folgendes festlegen:
+*Einstellungen*-Button. Für jede Kamera sind im Hauptbereich nur wenige Felder nötig:
 
 | Einstellung | Beschreibung |
 |---|---|
 | Name | Anzeigename in HomeKit |
-| IP-Adresse / Hostname | Adresse der Kamera, Türklingel oder des NVR |
-| HTTP(S)-Port, Benutzername, Passwort | Zugangsdaten für die Reolink-API |
-| HTTPS verwenden / Selbstsignierte Zertifikate akzeptieren | Reolink-Geräte nutzen meist HTTPS mit selbstsigniertem Zertifikat |
-| Kanal | Bei einem NVR der Kanalindex der Kamera (0 = erster Kanal) |
+| Kamera-Adresse | IP-Adresse/Hostname der Kamera, Türklingel oder des NVR — optional mit Port, z. B. `192.168.1.50` oder `192.168.1.50:443` |
+| Benutzername / Passwort | Zugangsdaten für die Reolink-API |
 | Als Türklingel anzeigen | Blendet den Klingel-Knopf ein/aus |
 | Klingel-Ereignisquelle | Welches Ereignis (`visitor`, `people`, `md`, `mqtt`) als Klingeln gilt |
-| Bewegungssensor aktivieren | Separater HomeKit-Bewegungssensor |
+| MQTT-Topic für Klingeln | Nur bei Klingel-Ereignisquelle `mqtt` (siehe unten) |
 | HomeKit Secure Video aktivieren | Aktiviert die HKSV-Aufnahmepipeline |
-| Live-/Aufnahme-Stream | Welcher Reolink-Stream (`main`/`sub`/`ext`) für Live-Ansicht bzw. HKSV verwendet wird |
-| Prebuffer-/Fragment-Länge | Feinjustierung der HKSV-Aufnahme |
+
+Seltener benötigte Details (HTTPS/Zertifikate, NVR-Kanal, RTSP-Port, Stream-Auswahl,
+Bitrate, HKSV-Feinjustierung, Abfrageintervall, MQTT-Payload-Filter) liegen pro Kamera
+unter dem einklappbaren Abschnitt *Erweitert* — die Standardwerte passen für die meisten
+Reolink-Geräte ohne Anpassung.
+
+Analog dazu genügt für den MQTT-Broker (nur nötig bei Klingel-Ereignisquelle `mqtt`) eine
+einzige *MQTT-Broker-Adresse*, ebenfalls optional mit Port (Standard: 1883), z. B.
+`192.168.1.20` oder `192.168.1.20:1883`.
 
 Eine manuelle `config.json` sieht z. B. so aus:
 

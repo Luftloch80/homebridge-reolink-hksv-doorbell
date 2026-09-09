@@ -1,7 +1,7 @@
 {
   "displayName": "Reolink HKSV Doorbell",
   "name": "homebridge-reolink-hksv-doorbell",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "Homebridge plugin for Reolink doorbells and cameras with HomeKit Secure Video (HKSV) support, fully configurable via Homebridge UI.",
   "license": "MIT",
   "author": "luftloch80",
