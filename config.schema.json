@@ -133,10 +133,10 @@
               "description": "Nur bei Klingel-Ereignisquelle \"MQTT\". Jede (nicht-retained) Nachricht auf diesem Topic löst die Klingel aus, sofern kein exaktes Payload unten festgelegt ist."
             },
             "mqttRingPayload": {
-              "title": "Erwartetes MQTT-Payload (optional)",
+              "title": "Status (Payload, optional)",
               "type": "string",
               "placeholder": "z.B. ON oder true",
-              "description": "Nur bei Klingel-Ereignisquelle \"MQTT\". Leer lassen, damit jede Nachricht auf dem Topic als Klingeln zählt."
+              "description": "Nur bei Klingel-Ereignisquelle \"MQTT\". Leer lassen, damit jede Nachricht auf dem Topic als Klingeln zählt; sonst nur bei genau diesem Wert."
             },
             "enableMotion": {
               "title": "Bewegungssensor aktivieren",
@@ -228,7 +228,7 @@
         {
           "type": "fieldset",
           "title": "Türklingel",
-          "items": ["cameras[].isDoorbell", "cameras[].ringTrigger", "cameras[].mqttRingTopic"]
+          "items": ["cameras[].isDoorbell", "cameras[].ringTrigger", "cameras[].mqttRingTopic", "cameras[].mqttRingPayload"]
         },
         {
           "type": "fieldset",
@@ -245,7 +245,6 @@
             "cameras[].allowInsecureHttps",
             "cameras[].channel",
             "cameras[].rtspPort",
-            "cameras[].mqttRingPayload",
             "cameras[].enableMotion",
             "cameras[].pollInterval",
             "cameras[].liveStream",
