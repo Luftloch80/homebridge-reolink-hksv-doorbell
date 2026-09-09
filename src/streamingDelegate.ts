@@ -42,6 +42,17 @@ function srtpSuiteToFfmpeg(hap: HAP, suite: number): string {
   return suite === hap.SRTPCryptoSuites.AES_CM_256_HMAC_SHA1_80 ? 'AES_CM_256_HMAC_SHA1_80' : 'AES_CM_128_HMAC_SHA1_80';
 }
 
+/**
+ * HomeKit's SSRC is an unsigned 32-bit value, but ffmpeg's `-ssrc` option parses it as a
+ * signed 32-bit integer and rejects anything above INT32_MAX ("out of range"). The RTP
+ * SSRC field itself is just 32 raw bits with no sign, so converting to the equivalent
+ * signed two's-complement representation keeps the exact same bits on the wire while
+ * satisfying ffmpeg's range check.
+ */
+function toFfmpegSsrc(ssrc: number): number {
+  return ssrc > 0x7fffffff ? ssrc - 0x100000000 : ssrc;
+}
+
 interface OngoingSession {
   ffmpeg: FfmpegProcess;
   localVideoPort: number;
@@ -161,7 +172,7 @@ export class StreamingDelegate implements CameraStreamingDelegate {
       '-bufsize', `${videoBitrate * 2}k`,
       '-maxrate', `${videoBitrate}k`,
       '-payload_type', String(request.video.pt),
-      '-ssrc', String(request.video.ssrc),
+      '-ssrc', String(toFfmpegSsrc(request.video.ssrc)),
       '-f', 'rtp',
       '-srtp_out_suite', videoSrtpSuite,
       '-srtp_out_params', videoSrtpParams,
@@ -182,7 +193,7 @@ export class StreamingDelegate implements CameraStreamingDelegate {
         '-b:a', `${request.audio.max_bit_rate}k`,
         '-ac', '1',
         '-payload_type', String(request.audio.pt),
-        '-ssrc', String(request.audio.ssrc),
+        '-ssrc', String(toFfmpegSsrc(request.audio.ssrc)),
         '-f', 'rtp',
         '-srtp_out_suite', audioSrtpSuite,
         '-srtp_out_params', audioSrtpParams,
