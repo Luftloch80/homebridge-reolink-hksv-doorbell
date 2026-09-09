@@ -222,26 +222,30 @@
     },
     {
       "key": "cameras",
-      "type": "array",
-      "title": "Kameras",
+      "type": "tabarray",
+      "title": "{{ value.name || 'Neue Kamera' }}",
       "items": [
         {
-          "type": "fieldset",
+          "key": "cameras[]",
+          "type": "section",
           "title": "Kamera",
           "items": ["cameras[].name", "cameras[].host", "cameras[].username", "cameras[].password"]
         },
         {
-          "type": "fieldset",
+          "key": "cameras[]",
+          "type": "section",
           "title": "Türklingel",
           "items": ["cameras[].isDoorbell", "cameras[].ringTrigger", "cameras[].mqttRingTopic", "cameras[].mqttRingPayload"]
         },
         {
-          "type": "fieldset",
+          "key": "cameras[]",
+          "type": "section",
           "title": "HomeKit Secure Video",
           "items": ["cameras[].enableHksv"]
         },
         {
-          "type": "fieldset",
+          "key": "cameras[]",
+          "type": "section",
           "title": "Erweitert",
           "expandable": true,
           "expanded": false,
