@@ -66,6 +66,22 @@ Analog dazu genügt für den MQTT-Broker (nur nötig bei Klingel-Ereignisquelle 
 einzige *MQTT-Broker-Adresse*, ebenfalls optional mit Port (Standard: 1883), z. B.
 `192.168.1.20` oder `192.168.1.20:1883`.
 
+### Kamera als eigenständiges Zubehör (nicht über die Bridge)
+
+Standardmäßig hängen alle Kameras als "gebrücktes" Zubehör an der Homebridge-Bridge
+(erscheint in der Home-App als "Steuerzentrale"/Hub). Über *Erweitert →
+"Als eigenständiges HomeKit-Zubehör (nicht über die Bridge)"* kann eine Kamera stattdessen
+als eigenes HomeKit-Gerät veröffentlicht werden.
+
+Das ändert die HomeKit-Identität der Kamera, daher ist danach einmalig ein manueller
+Schritt nötig:
+
+1. War die Kamera vorher gebrückt: ihre alte Kachel in der Home-App entfernen.
+2. Homebridge neu starten.
+3. In der Home-App über *Zubehör hinzufügen → Kein Code oder Radar?* (bzw. manuell
+   eingeben) die Kamera mit dem Homebridge-PIN erneut koppeln — im Homebridge-Log steht
+   dazu die passende Meldung mit Setup-Code.
+
 Eine manuelle `config.json` sieht z. B. so aus:
 
 ```json

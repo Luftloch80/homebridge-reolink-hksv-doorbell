@@ -65,6 +65,7 @@ export class ReolinkHksvDoorbellPlatform implements DynamicPlatformPlugin {
     }
 
     const configuredUuids = new Set<string>();
+    const externalAccessories: PlatformAccessory[] = [];
 
     for (const cameraConfig of cameras) {
       if (!this.validateCameraConfig(cameraConfig)) {
@@ -78,7 +79,30 @@ export class ReolinkHksvDoorbellPlatform implements DynamicPlatformPlugin {
       const category = cameraConfig.isDoorbell !== false ? this.api.hap.Categories.VIDEO_DOORBELL : this.api.hap.Categories.CAMERA;
 
       let accessory: PlatformAccessory;
-      if (existingAccessory) {
+      if (cameraConfig.standaloneAccessory) {
+        // Standalone accessories are never restored from Homebridge's own accessory cache (unlike
+        // bridged ones) - they have to be freshly constructed and republished on every startup.
+        // If this camera used to be bridged, that old bridged identity has to be torn down first;
+        // switching modes changes the accessory's HomeKit identity, so it needs pairing again as a
+        // new device regardless.
+        if (existingAccessory) {
+          this.log.info(
+            `[${cameraConfig.name}] Switching to standalone accessory - removing the old bridged accessory. ` +
+              'Remove its tile from the Home app if it is still listed there, and add this camera again ' +
+              'via "Add Accessory" using the Homebridge PIN.',
+          );
+          this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [existingAccessory]);
+          const index = this.accessories.indexOf(existingAccessory);
+          if (index >= 0) {
+            this.accessories.splice(index, 1);
+          }
+        }
+
+        accessory = new this.api.platformAccessory(cameraConfig.name, uuid);
+        accessory.context.cameraConfig = cameraConfig;
+        accessory.category = category;
+        externalAccessories.push(accessory);
+      } else if (existingAccessory) {
         this.log.info(`Restoring accessory from cache: ${cameraConfig.name}`);
         existingAccessory.displayName = cameraConfig.name;
         existingAccessory.context.cameraConfig = cameraConfig;
@@ -114,6 +138,10 @@ export class ReolinkHksvDoorbellPlatform implements DynamicPlatformPlugin {
         this.mqttService,
       );
       this.activeAccessories.set(uuid, instance);
+    }
+
+    if (externalAccessories.length > 0) {
+      this.api.publishExternalAccessories(PLUGIN_NAME, externalAccessories);
     }
 
     const staleAccessories = this.accessories.filter((accessory) => !configuredUuids.has(accessory.UUID));

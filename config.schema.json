@@ -203,6 +203,12 @@
               "type": "boolean",
               "default": false,
               "description": "Standardmäßig deaktiviert: Der H.264-Videostream der Kamera wird unverändert durchgereicht, um CPU-Last auf leistungsschwacher Hardware (z. B. Raspberry Pi) zu vermeiden. Nur aktivieren, wenn exakte Kontrolle über Profil/Level/Bitrate benötigt wird."
+            },
+            "standaloneAccessory": {
+              "title": "Als eigenständiges HomeKit-Zubehör (nicht über die Bridge)",
+              "type": "boolean",
+              "default": false,
+              "description": "Veröffentlicht diese Kamera als eigenes HomeKit-Gerät statt über die Homebridge-Bridge (\"Steuerzentrale\"). Muss danach einmalig manuell in der Home-App hinzugefügt werden (Zubehör hinzufügen, Homebridge-PIN eingeben). War die Kamera vorher gebrückt, zuerst deren alte Kachel in der Home-App entfernen."
             }
           }
         }
@@ -259,7 +265,8 @@
             "cameras[].maxBitrate",
             "cameras[].liveViewTranscode",
             "cameras[].prebufferLength",
-            "cameras[].fragmentLength"
+            "cameras[].fragmentLength",
+            "cameras[].standaloneAccessory"
           ]
         }
       ]

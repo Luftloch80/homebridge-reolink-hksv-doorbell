@@ -73,6 +73,14 @@ export interface CameraConfig {
    * higher-resolution cameras. Enable only if exact control over profile/level/bitrate is needed.
    */
   liveViewTranscode?: boolean;
+  /**
+   * Publish this camera as its own standalone HomeKit accessory instead of bridging it under the
+   * shared Homebridge bridge ("Steuerzentrale"/hub in the Home app). Requires pairing it
+   * separately in the Home app (Add Accessory, using the Homebridge PIN) the first time it's
+   * enabled; if the camera was previously bridged, its old tile must be removed from the Home
+   * app once, since it's a distinct HomeKit identity from this point on.
+   */
+  standaloneAccessory?: boolean;
 }
 
 export interface MqttBrokerConfig {
