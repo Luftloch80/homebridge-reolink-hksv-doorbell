@@ -144,6 +144,9 @@ export class ReolinkApi {
     let ring = false;
     if (ringTrigger === 'md') {
       ring = motionFromMd;
+    } else if (ringTrigger === 'mqtt') {
+      // Ring is driven externally via MQTT in this mode; the Reolink poll never reports it.
+      ring = false;
     } else {
       const entry = aiValue?.[ringTrigger];
       ring = entry?.alarm_state === 1;

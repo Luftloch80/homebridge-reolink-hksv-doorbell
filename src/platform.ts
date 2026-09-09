@@ -1,11 +1,13 @@
 import type { API, DynamicPlatformPlugin, Logger, PlatformAccessory, PlatformConfig } from 'homebridge';
 import type { CameraConfig, ReolinkPlatformConfig } from './configTypes';
 import { DoorbellAccessory } from './doorbellAccessory';
+import { MqttService } from './mqttService';
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
 
 export class ReolinkHksvDoorbellPlatform implements DynamicPlatformPlugin {
   public readonly accessories: PlatformAccessory[] = [];
   private readonly activeAccessories = new Map<string, DoorbellAccessory>();
+  private mqttService: MqttService | undefined;
 
   constructor(
     private readonly log: Logger,
@@ -20,6 +22,7 @@ export class ReolinkHksvDoorbellPlatform implements DynamicPlatformPlugin {
       for (const instance of this.activeAccessories.values()) {
         instance.destroy();
       }
+      this.mqttService?.destroy();
     });
   }
 
@@ -34,6 +37,15 @@ export class ReolinkHksvDoorbellPlatform implements DynamicPlatformPlugin {
 
     if (cameras.length === 0) {
       this.log.warn('No cameras configured. Add at least one camera in the Homebridge UI plugin settings.');
+    }
+
+    const needsMqtt = cameras.some((camera) => camera.ringTrigger === 'mqtt');
+    if (needsMqtt && platformConfig.mqtt?.enabled !== false && platformConfig.mqtt?.host && !this.mqttService) {
+      this.mqttService = new MqttService(platformConfig.mqtt, this.log);
+    } else if (needsMqtt && !platformConfig.mqtt?.host) {
+      this.log.error(
+        'At least one camera uses ringTrigger "mqtt", but no MQTT broker is configured in the platform settings.',
+      );
     }
 
     const configuredUuids = new Set<string>();
@@ -72,6 +84,7 @@ export class ReolinkHksvDoorbellPlatform implements DynamicPlatformPlugin {
         cameraConfig,
         platformConfig.ffmpegPath,
         platformConfig.debug === true,
+        this.mqttService,
       );
       this.activeAccessories.set(uuid, instance);
     }
@@ -103,6 +116,19 @@ export class ReolinkHksvDoorbellPlatform implements DynamicPlatformPlugin {
       );
       return false;
     }
+
+    if (cameraConfig.ringTrigger === 'mqtt') {
+      if (!cameraConfig.mqttRingTopic) {
+        this.log.error(`[${cameraConfig.name}] ringTrigger is "mqtt" but no mqttRingTopic is configured.`);
+        return false;
+      }
+      if (cameraConfig.isDoorbell === false) {
+        this.log.warn(
+          `[${cameraConfig.name}] ringTrigger is "mqtt" but "Als Türklingel anzeigen" is disabled, so ring events have no Doorbell service to trigger.`,
+        );
+      }
+    }
+
     return true;
   }
 }

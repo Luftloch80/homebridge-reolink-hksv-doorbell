@@ -18,6 +18,43 @@
         "type": "boolean",
         "default": false
       },
+      "mqtt": {
+        "title": "MQTT-Broker (für Klingel-Ereignisquelle \"MQTT\")",
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "title": "MQTT aktivieren",
+            "type": "boolean",
+            "default": false
+          },
+          "host": {
+            "title": "Broker-Host",
+            "type": "string",
+            "placeholder": "192.168.1.20"
+          },
+          "port": {
+            "title": "Broker-Port",
+            "type": "integer",
+            "default": 1883,
+            "minimum": 1,
+            "maximum": 65535
+          },
+          "username": {
+            "title": "Benutzername",
+            "type": "string"
+          },
+          "password": {
+            "title": "Passwort",
+            "type": "string",
+            "format": "password"
+          },
+          "useTls": {
+            "title": "TLS verwenden (mqtts)",
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
       "cameras": {
         "title": "Kameras",
         "type": "array",
@@ -92,9 +129,26 @@
               "title": "Klingel-Ereignisquelle",
               "type": "string",
               "default": "visitor",
-              "enum": ["visitor", "people", "md"],
-              "enumNames": ["Besucher-Erkennung (visitor, empfohlen)", "Personenerkennung (people)", "Bewegungsmelder (md)"],
-              "description": "Welches Reolink-Ereignis als Klingeln interpretiert wird."
+              "enum": ["visitor", "people", "md", "mqtt"],
+              "enumNames": [
+                "Besucher-Erkennung (visitor, empfohlen für Reolink-Türklingeln)",
+                "Personenerkennung (people)",
+                "Bewegungsmelder (md)",
+                "MQTT (externer Trigger, z.B. Dummy-Switch)"
+              ],
+              "description": "Welches Ereignis als Klingeln interpretiert wird. \"MQTT\" eignet sich für normale Kameras ohne eigenen Klingel-Knopf, bei denen ein externes System (z.B. ein Dummy-Switch in Home Assistant/Scrypted) auf ein MQTT-Topic klingelt."
+            },
+            "mqttRingTopic": {
+              "title": "MQTT-Topic für Klingeln",
+              "type": "string",
+              "placeholder": "home/frontdoor/ring",
+              "description": "Nur bei Klingel-Ereignisquelle \"MQTT\". Jede (nicht-retained) Nachricht auf diesem Topic löst die Klingel aus, sofern kein exaktes Payload unten festgelegt ist."
+            },
+            "mqttRingPayload": {
+              "title": "Erwartetes MQTT-Payload (optional)",
+              "type": "string",
+              "placeholder": "z.B. ON oder true",
+              "description": "Nur bei Klingel-Ereignisquelle \"MQTT\". Leer lassen, damit jede Nachricht auf dem Topic als Klingeln zählt."
             },
             "enableMotion": {
               "title": "Bewegungssensor aktivieren",
@@ -168,6 +222,12 @@
       "items": ["ffmpegPath", "debug"]
     },
     {
+      "type": "fieldset",
+      "title": "MQTT-Broker",
+      "description": "Nur nötig, wenn mindestens eine Kamera unten die Klingel-Ereignisquelle \"MQTT\" verwendet.",
+      "items": ["mqtt.enabled", "mqtt.host", "mqtt.port", "mqtt.username", "mqtt.password", "mqtt.useTls"]
+    },
+    {
       "key": "cameras",
       "type": "array",
       "title": "Kameras",
@@ -190,7 +250,14 @@
         {
           "type": "fieldset",
           "title": "Türklingel & Sensoren",
-          "items": ["cameras[].isDoorbell", "cameras[].ringTrigger", "cameras[].enableMotion", "cameras[].pollInterval"]
+          "items": [
+            "cameras[].isDoorbell",
+            "cameras[].ringTrigger",
+            "cameras[].mqttRingTopic",
+            "cameras[].mqttRingPayload",
+            "cameras[].enableMotion",
+            "cameras[].pollInterval"
+          ]
         },
         {
           "type": "fieldset",

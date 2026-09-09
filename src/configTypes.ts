@@ -1,12 +1,15 @@
 import type { PlatformConfig } from 'homebridge';
 
 /**
- * Which Reolink AI/alarm field is interpreted as the doorbell button press.
+ * Which source is interpreted as the doorbell button press.
  * Reolink video doorbells report the button press as a "visitor" entry in the
  * GetAiState response. Older firmware / non-doorbell chimes may not expose it,
  * in which case falling back to the "people" AI detector is the closest match.
+ * "mqtt" is for cameras with no physical doorbell button at all: the ring is
+ * triggered externally (e.g. a dummy switch in Home Assistant/Scrypted) by
+ * publishing to an MQTT topic instead of being derived from the camera itself.
  */
-export type RingTrigger = 'visitor' | 'people' | 'md';
+export type RingTrigger = 'visitor' | 'people' | 'md' | 'mqtt';
 
 export type StreamQuality = 'main' | 'sub' | 'ext';
 
@@ -29,8 +32,16 @@ export interface CameraConfig {
   rtspPort?: number;
   /** Expose the accessory as a HomeKit doorbell with a ring button. */
   isDoorbell?: boolean;
-  /** Which Reolink event is treated as the doorbell button press. */
+  /** Which event is treated as the doorbell button press. */
   ringTrigger?: RingTrigger;
+  /** MQTT topic to subscribe to for the ring event. Required when ringTrigger is "mqtt". */
+  mqttRingTopic?: string;
+  /**
+   * Exact payload (after trimming) that counts as a ring on `mqttRingTopic`.
+   * Leave empty to treat every (non-retained) message on the topic as a ring,
+   * which fits a momentary "press" style dummy switch/automation.
+   */
+  mqttRingPayload?: string;
   /** Expose a separate HomeKit motion sensor. */
   enableMotion?: boolean;
   /** Enable HomeKit Secure Video recording support for this camera. */
@@ -53,10 +64,23 @@ export interface CameraConfig {
   videoFilter?: string;
 }
 
+export interface MqttBrokerConfig {
+  /** Enable the shared MQTT connection used for `ringTrigger: "mqtt"` cameras. */
+  enabled?: boolean;
+  host: string;
+  port?: number;
+  username?: string;
+  password?: string;
+  /** Connect using MQTTS (TLS) instead of plain MQTT. Defaults to false. */
+  useTls?: boolean;
+}
+
 export interface ReolinkPlatformConfig extends PlatformConfig {
   cameras?: CameraConfig[];
   /** Path to a custom ffmpeg binary. Defaults to the bundled ffmpeg-for-homebridge binary or "ffmpeg" from PATH. */
   ffmpegPath?: string;
   /** Enable verbose ffmpeg/debug logging. */
   debug?: boolean;
+  /** Shared MQTT broker connection used by cameras with `ringTrigger: "mqtt"`. */
+  mqtt?: MqttBrokerConfig;
 }

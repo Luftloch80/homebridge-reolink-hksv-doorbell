@@ -55,7 +55,7 @@ Nach der Installation erscheint das Plugin in der Homebridge-UI unter *Plugins* 
 | HTTPS verwenden / Selbstsignierte Zertifikate akzeptieren | Reolink-Geräte nutzen meist HTTPS mit selbstsigniertem Zertifikat |
 | Kanal | Bei einem NVR der Kanalindex der Kamera (0 = erster Kanal) |
 | Als Türklingel anzeigen | Blendet den Klingel-Knopf ein/aus |
-| Klingel-Ereignisquelle | Welches Reolink-Ereignis (`visitor`, `people`, `md`) als Klingeln gilt |
+| Klingel-Ereignisquelle | Welches Ereignis (`visitor`, `people`, `md`, `mqtt`) als Klingeln gilt |
 | Bewegungssensor aktivieren | Separater HomeKit-Bewegungssensor |
 | HomeKit Secure Video aktivieren | Aktiviert die HKSV-Aufnahmepipeline |
 | Live-/Aufnahme-Stream | Welcher Reolink-Stream (`main`/`sub`/`ext`) für Live-Ansicht bzw. HKSV verwendet wird |
@@ -93,6 +93,36 @@ Reolink-Video-Türklingeln melden einen Tastendruck als `visitor`-Ereignis über
 Geräte-API. Bei Modellen/Firmwareständen, die dieses Feld (noch) nicht liefern, kann
 alternativ die Personenerkennung (`people`) oder der reine Bewegungsmelder (`md`) als
 Klingel-Auslöser konfiguriert werden.
+
+### Klingeln über MQTT (für normale Kameras ohne Klingel-Knopf)
+
+Hast du nur eine normale Reolink-Kamera (keine Video-Türklingel), kannst du das Klingeln
+trotzdem in HomeKit abbilden — ähnlich wie bei Scrypted per "Dummy-Switch": Ein externes
+System (z. B. Home Assistant, Scrypted, ein Taster mit MQTT-Anbindung) veröffentlicht eine
+Nachricht auf ein MQTT-Topic, das Plugin hört auf dieses Topic und löst daraufhin die
+HomeKit-Türklingel aus (inkl. HKSV-Aufnahme, falls aktiviert).
+
+1. In den Plugin-Einstellungen unter *MQTT-Broker* die Verbindung zu deinem MQTT-Broker
+   konfigurieren (Host, Port, ggf. Zugangsdaten) und aktivieren.
+2. Bei der jeweiligen Kamera unter *Türklingel & Sensoren*:
+   - *Als Türklingel (Doorbell) anzeigen* aktivieren
+   - *Klingel-Ereignisquelle* auf **MQTT** stellen
+   - *MQTT-Topic für Klingeln* setzen, z. B. `home/haustuer/ring`
+   - Optional *Erwartetes MQTT-Payload* setzen (z. B. `ON` oder `PRESSED`), falls das Topic
+     auch für andere Zustände verwendet wird. Leer lassen, wenn jede Nachricht auf dem Topic
+     als Klingeln zählen soll.
+3. Dein externes System veröffentlicht bei einem Klingel-Ereignis eine (nicht-retained)
+   Nachricht auf genau diesem Topic — z. B. über eine Home-Assistant-Automation mit einer
+   `mqtt.publish`-Aktion, oder direkt über `mosquitto_pub -t home/haustuer/ring -m ON`.
+
+Retained Nachrichten (der beim (Re-)Verbinden automatisch vom Broker "nachgelieferte"
+letzte bekannte Wert eines Topics) werden bewusst ignoriert, damit nicht bei jedem
+Homebridge-Neustart ein Phantom-Klingeln ausgelöst wird — es zählt nur eine frisch
+eintreffende Nachricht.
+
+Motion-Erkennung läuft bei `ringTrigger: mqtt` unverändert normal über die Reolink-API
+weiter (sofern *Bewegungssensor aktivieren* eingeschaltet ist); nur die Klingel-Quelle
+wird ersetzt.
 
 ### Wie HKSV funktioniert
 

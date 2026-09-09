@@ -1,6 +1,7 @@
 import type { API, CameraController, CameraControllerOptions, DoorbellController, HAP, Logger, PlatformAccessory } from 'homebridge';
 import type { CameraConfig } from './configTypes';
 import { resolveFfmpegPath } from './ffmpeg';
+import type { MqttMessageHandler, MqttService } from './mqttService';
 import { RecordingDelegate } from './recordingDelegate';
 import { ReolinkApi } from './reolink/reolinkApi';
 import { StreamingDelegate } from './streamingDelegate';
@@ -17,6 +18,7 @@ export class DoorbellAccessory {
   private pollTimer: NodeJS.Timeout | undefined;
   private lastRingState = false;
   private polling = false;
+  private mqttSubscription: { topic: string; handler: MqttMessageHandler } | undefined;
 
   constructor(
     api: API,
@@ -25,6 +27,7 @@ export class DoorbellAccessory {
     private readonly cameraConfig: CameraConfig,
     ffmpegPathOverride: string | undefined,
     debug: boolean,
+    private readonly mqttService: MqttService | undefined,
   ) {
     this.hap = api.hap;
     this.reolink = new ReolinkApi(cameraConfig, log);
@@ -133,9 +136,34 @@ export class DoorbellAccessory {
       audioActiveCharacteristic.on('change', () => this.recordingDelegate?.refreshAudioActive());
     }
 
-    if (this.doorbellController || cameraConfig.enableMotion !== false) {
+    const needsReolinkRingPolling = this.doorbellController && cameraConfig.ringTrigger !== 'mqtt';
+    if (needsReolinkRingPolling || cameraConfig.enableMotion !== false) {
       this.startPolling();
     }
+
+    if (cameraConfig.ringTrigger === 'mqtt' && cameraConfig.mqttRingTopic && mqttService) {
+      this.setupMqttRing(mqttService, cameraConfig.mqttRingTopic);
+    }
+  }
+
+  private setupMqttRing(mqttService: MqttService, topic: string): void {
+    const expectedPayload = this.cameraConfig.mqttRingPayload;
+
+    const handler: MqttMessageHandler = (payload, retained) => {
+      // Ignore retained messages: they replay the topic's last-known value on every
+      // (re)subscribe/reconnect and would otherwise trigger a phantom ring on startup.
+      if (retained) {
+        return;
+      }
+      if (expectedPayload && payload.toString('utf8').trim() !== expectedPayload) {
+        return;
+      }
+      this.log.info(`[${this.cameraConfig.name}] Doorbell ring via MQTT (topic "${topic}")`);
+      this.doorbellController?.ringDoorbell();
+    };
+
+    mqttService.subscribe(topic, handler);
+    this.mqttSubscription = { topic, handler };
   }
 
   private setupAccessoryInformation(): void {
@@ -198,6 +226,10 @@ export class DoorbellAccessory {
     if (this.pollTimer) {
       clearInterval(this.pollTimer);
       this.pollTimer = undefined;
+    }
+    if (this.mqttSubscription && this.mqttService) {
+      this.mqttService.unsubscribe(this.mqttSubscription.topic, this.mqttSubscription.handler);
+      this.mqttSubscription = undefined;
     }
     void this.reolink.logout();
   }
