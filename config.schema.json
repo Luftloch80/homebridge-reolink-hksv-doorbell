@@ -197,6 +197,12 @@
               "minimum": 300,
               "maximum": 8000,
               "placeholder": "z.B. 2000"
+            },
+            "liveViewTranscode": {
+              "title": "Live-Ansicht neu kodieren (Transcoding)",
+              "type": "boolean",
+              "default": false,
+              "description": "Standardmäßig deaktiviert: Der H.264-Videostream der Kamera wird unverändert durchgereicht, um CPU-Last auf leistungsschwacher Hardware (z. B. Raspberry Pi) zu vermeiden. Nur aktivieren, wenn exakte Kontrolle über Profil/Level/Bitrate benötigt wird."
             }
           }
         }
@@ -251,6 +257,7 @@
             "cameras[].recordingStream",
             "cameras[].enableAudio",
             "cameras[].maxBitrate",
+            "cameras[].liveViewTranscode",
             "cameras[].prebufferLength",
             "cameras[].fragmentLength"
           ]

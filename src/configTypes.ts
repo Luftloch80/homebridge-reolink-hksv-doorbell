@@ -66,6 +66,13 @@ export interface CameraConfig {
   maxBitrate?: number;
   /** Extra ffmpeg output arguments appended to the live view command, e.g. for hardware acceleration. */
   videoFilter?: string;
+  /**
+   * Re-encode the live view video with libx264 instead of passing the camera's H.264 stream
+   * through unchanged. Off by default: passthrough avoids the real-time software transcode CPU
+   * load that can cause decode corruption on constrained hardware (e.g. a Raspberry Pi) with
+   * higher-resolution cameras. Enable only if exact control over profile/level/bitrate is needed.
+   */
+  liveViewTranscode?: boolean;
 }
 
 export interface MqttBrokerConfig {

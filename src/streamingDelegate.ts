@@ -151,7 +151,6 @@ export class StreamingDelegate implements CameraStreamingDelegate {
     const { request: prepareRequest, localVideoPort, localAudioPort } = pending;
     const rtspUrl = this.reolink.getRtspUrl(this.cameraConfig.liveStream ?? 'main');
 
-    const videoBitrate = this.cameraConfig.maxBitrate ?? Math.min(request.video.max_bit_rate, 2000);
     const videoSrtpSuite = srtpSuiteToFfmpeg(this.hap, prepareRequest.video.srtpCryptoSuite);
     const videoSrtpParams = Buffer.concat([prepareRequest.video.srtp_key, prepareRequest.video.srtp_salt]).toString('base64');
 
@@ -162,19 +161,32 @@ export class StreamingDelegate implements CameraStreamingDelegate {
     const args: string[] = ['-hide_banner', '-loglevel', this.debug ? 'verbose' : 'error'];
     args.push('-rtsp_transport', 'tcp', '-i', rtspUrl);
 
+    args.push('-map', '0:v:0', '-an', '-sn', '-dn');
+
+    if (this.cameraConfig.liveViewTranscode) {
+      // Re-encoding gives exact control over the negotiated profile/level/resolution/bitrate,
+      // at the cost of real-time software decode+encode CPU load - noticeably heavy on boards
+      // like a Raspberry Pi for higher camera resolutions.
+      const videoBitrate = this.cameraConfig.maxBitrate ?? Math.min(request.video.max_bit_rate, 2000);
+      args.push(
+        '-codec:v', 'libx264',
+        '-pix_fmt', 'yuv420p',
+        '-profile:v', h264ProfileToFfmpeg(this.hap, request.video.profile),
+        '-level:v', h264LevelToFfmpeg(this.hap, request.video.level),
+        '-preset', 'ultrafast',
+        '-tune', 'zerolatency',
+        '-r', String(request.video.fps),
+        '-b:v', `${videoBitrate}k`,
+        '-bufsize', `${videoBitrate * 2}k`,
+        '-maxrate', `${videoBitrate}k`,
+      );
+    } else {
+      // Default: the camera already sends H.264, which HomeKit accepts directly, so the
+      // stream is passed through untouched instead of being decoded and re-encoded.
+      args.push('-codec:v', 'copy');
+    }
+
     args.push(
-      '-map', '0:v:0',
-      '-an', '-sn', '-dn',
-      '-codec:v', 'libx264',
-      '-pix_fmt', 'yuv420p',
-      '-profile:v', h264ProfileToFfmpeg(this.hap, request.video.profile),
-      '-level:v', h264LevelToFfmpeg(this.hap, request.video.level),
-      '-preset', 'ultrafast',
-      '-tune', 'zerolatency',
-      '-r', String(request.video.fps),
-      '-b:v', `${videoBitrate}k`,
-      '-bufsize', `${videoBitrate * 2}k`,
-      '-maxrate', `${videoBitrate}k`,
       '-payload_type', String(request.video.pt),
       '-ssrc', String(toFfmpegSsrc(request.video.ssrc)),
       '-f', 'rtp',
