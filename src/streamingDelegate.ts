@@ -1,4 +1,3 @@
-import { reservePorts } from '@homebridge/camera-utils';
 import type {
   CameraStreamingDelegate,
   HAP,
@@ -14,6 +13,7 @@ import type {
 } from 'homebridge';
 import type { CameraConfig } from './configTypes';
 import { FfmpegProcess } from './ffmpeg';
+import { reservePorts } from './ports';
 import type { ReolinkApi } from './reolink/reolinkApi';
 
 function h264ProfileToFfmpeg(hap: HAP, profile: number): string {
@@ -84,7 +84,7 @@ export class StreamingDelegate implements CameraStreamingDelegate {
 
   async prepareStream(request: PrepareStreamRequest, callback: PrepareStreamCallback): Promise<void> {
     try {
-      const [localVideoPort, localAudioPort] = await reservePorts({ count: 2 });
+      const [localVideoPort, localAudioPort] = await reservePorts(2);
 
       // Ports are stashed under the session so `handleStreamRequest` can bind ffmpeg's
       // RTCP sockets to the exact ports advertised here.
