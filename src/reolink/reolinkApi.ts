@@ -70,7 +70,11 @@ export class ReolinkApi {
       },
     ];
 
-    const response = await this.http.post<ReolinkCommandResponse<LoginResponseValue>[]>('/api.cgi', body);
+    // Reolink's firmware expects an explicit "token=null" query param on the Login request
+    // itself (matching what every other Reolink client library sends), alongside "cmd=Login".
+    const response = await this.http.post<ReolinkCommandResponse<LoginResponseValue>[]>('/api.cgi', body, {
+      params: { cmd: 'Login', token: 'null' },
+    });
     const result = response.data?.[0];
 
     if (!result || result.code !== 0 || !result.value) {
