@@ -98,6 +98,7 @@ export class ReolinkHksvDoorbellPlatform implements DynamicPlatformPlugin {
           }
         }
 
+        this.log.info(`[${cameraConfig.name}] Publishing as a standalone HomeKit accessory (not bridged).`);
         accessory = new this.api.platformAccessory(cameraConfig.name, uuid);
         accessory.context.cameraConfig = cameraConfig;
         accessory.category = category;
