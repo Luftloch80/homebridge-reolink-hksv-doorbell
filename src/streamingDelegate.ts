@@ -54,8 +54,7 @@ function toFfmpegSsrc(ssrc: number): number {
 }
 
 interface OngoingSession {
-  videoFfmpeg: FfmpegProcess;
-  audioFfmpeg: FfmpegProcess | undefined;
+  ffmpeg: FfmpegProcess;
   localVideoPort: number;
   localAudioPort: number;
 }
@@ -156,12 +155,14 @@ export class StreamingDelegate implements CameraStreamingDelegate {
     const videoSrtpSuite = srtpSuiteToFfmpeg(this.hap, prepareRequest.video.srtpCryptoSuite);
     const videoSrtpParams = Buffer.concat([prepareRequest.video.srtp_key, prepareRequest.video.srtp_salt]).toString('base64');
 
-    // Video and audio are transcoded by two independent ffmpeg processes (each with its own
-    // RTSP connection to the camera) so that an audio encoder failure can never take the live
-    // view's video down with it, and vice versa.
-    const videoArgs: string[] = ['-hide_banner', '-loglevel', this.debug ? 'verbose' : 'error'];
-    videoArgs.push('-rtsp_transport', 'tcp', '-i', rtspUrl);
-    videoArgs.push(
+    // Video and audio share a single ffmpeg process (one RTSP connection to the camera).
+    // Reolink cameras commonly cap total concurrent connections (RTSP + HTTP API combined);
+    // running two separate RTSP sessions here was observed to destabilize both the video
+    // feed and the HTTP API login on such cameras, so a single connection is used instead.
+    const args: string[] = ['-hide_banner', '-loglevel', this.debug ? 'verbose' : 'error'];
+    args.push('-rtsp_transport', 'tcp', '-i', rtspUrl);
+
+    args.push(
       '-map', '0:v:0',
       '-an', '-sn', '-dn',
       '-codec:v', 'libx264',
@@ -183,19 +184,11 @@ export class StreamingDelegate implements CameraStreamingDelegate {
         `?rtcpport=${localVideoPort}&localrtcpport=${localVideoPort}&pkt_size=${Math.min(request.video.mtu, 1378)}`,
     );
 
-    const videoFfmpeg = new FfmpegProcess(this.ffmpegPath, videoArgs, this.log, `${this.cameraConfig.name} live video`, this.debug);
-    videoFfmpeg.exited.catch((error: Error) => {
-      this.log.error(`[${this.cameraConfig.name}] Live video ffmpeg process ended unexpectedly: ${error.message}`);
-    });
-
-    let audioFfmpeg: FfmpegProcess | undefined;
     if (this.cameraConfig.enableAudio !== false) {
       const audioSrtpSuite = srtpSuiteToFfmpeg(this.hap, prepareRequest.audio.srtpCryptoSuite);
       const audioSrtpParams = Buffer.concat([prepareRequest.audio.srtp_key, prepareRequest.audio.srtp_salt]).toString('base64');
 
-      const audioArgs: string[] = ['-hide_banner', '-loglevel', this.debug ? 'verbose' : 'error'];
-      audioArgs.push('-rtsp_transport', 'tcp', '-i', rtspUrl);
-      audioArgs.push(
+      args.push(
         '-map', '0:a:0?',
         '-vn', '-sn', '-dn',
         '-codec:a', 'libfdk_aac',
@@ -212,24 +205,21 @@ export class StreamingDelegate implements CameraStreamingDelegate {
         `srtp://${prepareRequest.targetAddress}:${prepareRequest.audio.port}` +
           `?rtcpport=${localAudioPort}&localrtcpport=${localAudioPort}&pkt_size=188`,
       );
-
-      audioFfmpeg = new FfmpegProcess(this.ffmpegPath, audioArgs, this.log, `${this.cameraConfig.name} live audio`, this.debug);
-      audioFfmpeg.exited.catch((error: Error) => {
-        this.log.error(
-          `[${this.cameraConfig.name}] Live audio ffmpeg process ended unexpectedly (video is unaffected): ${error.message}`,
-        );
-      });
     }
 
-    this.ongoingSessions.set(request.sessionID, { videoFfmpeg, audioFfmpeg, localVideoPort, localAudioPort });
+    const ffmpeg = new FfmpegProcess(this.ffmpegPath, args, this.log, `${this.cameraConfig.name} live`, this.debug);
+    ffmpeg.exited.catch((error: Error) => {
+      this.log.error(`[${this.cameraConfig.name}] Live stream ffmpeg process ended unexpectedly: ${error.message}`);
+    });
+
+    this.ongoingSessions.set(request.sessionID, { ffmpeg, localVideoPort, localAudioPort });
     callback();
   }
 
   private stopStream(sessionID: string): void {
     const session = this.ongoingSessions.get(sessionID);
     if (session) {
-      session.videoFfmpeg.stop();
-      session.audioFfmpeg?.stop();
+      session.ffmpeg.stop();
       this.ongoingSessions.delete(sessionID);
     }
     this.pendingSessions.delete(sessionID);
