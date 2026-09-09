@@ -74,7 +74,7 @@
               "title": "Benutzername",
               "type": "string",
               "required": true,
-              "default": "admin"
+              "placeholder": "z. B. admin"
             },
             "password": {
               "title": "Passwort",
@@ -95,16 +95,17 @@
             "channel": {
               "title": "Kanal (bei NVR)",
               "type": "integer",
-              "default": 0,
               "minimum": 0,
-              "description": "0 für eigenständige Kameras/Türklingeln."
+              "placeholder": "0",
+              "description": "0 für eigenständige Kameras/Türklingeln (Standard)."
             },
             "rtspPort": {
               "title": "RTSP-Port",
               "type": "integer",
-              "default": 554,
               "minimum": 1,
-              "maximum": 65535
+              "maximum": 65535,
+              "placeholder": "554",
+              "description": "Standard: 554."
             },
             "isDoorbell": {
               "title": "Als Türklingel (Doorbell) anzeigen",
@@ -114,10 +115,9 @@
             "ringTrigger": {
               "title": "Klingel-Ereignisquelle",
               "type": "string",
-              "default": "visitor",
               "enum": ["visitor", "people", "md", "mqtt"],
               "enumNames": [
-                "Besucher-Erkennung (visitor, empfohlen für Reolink-Türklingeln)",
+                "Besucher-Erkennung (visitor, Standard, empfohlen für Reolink-Türklingeln)",
                 "Personenerkennung (people)",
                 "Bewegungsmelder (md)",
                 "MQTT (externer Trigger, z.B. Dummy-Switch)"
@@ -154,39 +154,37 @@
             "liveStream": {
               "title": "Stream für Live-Ansicht",
               "type": "string",
-              "default": "main",
               "enum": ["main", "sub", "ext"],
-              "enumNames": ["Hauptstream (main)", "Substream (sub)", "Erweitert (ext)"]
+              "enumNames": ["Hauptstream (main, Standard)", "Substream (sub)", "Erweitert (ext)"]
             },
             "recordingStream": {
               "title": "Stream für HKSV-Aufnahme",
               "type": "string",
-              "default": "sub",
               "enum": ["main", "sub", "ext"],
-              "enumNames": ["Hauptstream (main)", "Substream (sub, empfohlen)", "Erweitert (ext)"],
+              "enumNames": ["Hauptstream (main)", "Substream (sub, Standard, empfohlen)", "Erweitert (ext)"],
               "description": "Ein niedrig auflösender Stream reduziert die CPU-Last, da HKSV im Hintergrund dauerhaft transkodiert."
             },
             "prebufferLength": {
               "title": "Prebuffer-Länge (ms)",
               "type": "integer",
-              "default": 4000,
               "minimum": 4000,
-              "maximum": 8000
+              "maximum": 8000,
+              "placeholder": "4000"
             },
             "fragmentLength": {
               "title": "Fragment-Länge (ms)",
               "type": "integer",
-              "default": 4000,
               "minimum": 1000,
-              "maximum": 8000
+              "maximum": 8000,
+              "placeholder": "4000"
             },
             "pollInterval": {
               "title": "Abfrageintervall für Ereignisse (ms)",
               "type": "integer",
-              "default": 2000,
               "minimum": 500,
               "maximum": 10000,
-              "description": "Wie oft die Kamera nach Klingel-/Bewegungsereignissen abgefragt wird."
+              "placeholder": "2000",
+              "description": "Wie oft die Kamera nach Klingel-/Bewegungsereignissen abgefragt wird. Standard: 2000."
             },
             "maxBitrate": {
               "title": "Maximale Bitrate Live-Ansicht (kbps)",
@@ -198,14 +196,12 @@
             "liveViewTranscode": {
               "title": "Live-Ansicht neu kodieren (Transcoding)",
               "type": "boolean",
-              "default": false,
               "description": "Standardmäßig deaktiviert: Der H.264-Videostream der Kamera wird unverändert durchgereicht, um CPU-Last auf leistungsschwacher Hardware (z. B. Raspberry Pi) zu vermeiden. Nur aktivieren, wenn exakte Kontrolle über Profil/Level/Bitrate benötigt wird."
             },
             "standaloneAccessory": {
               "title": "Als eigenständiges HomeKit-Zubehör (nicht über die Bridge)",
               "type": "boolean",
-              "default": false,
-              "description": "Veröffentlicht diese Kamera als eigenes HomeKit-Gerät statt über die Homebridge-Bridge (\"Steuerzentrale\"). Muss danach einmalig manuell in der Home-App hinzugefügt werden (Zubehör hinzufügen, Homebridge-PIN eingeben). War die Kamera vorher gebrückt, zuerst deren alte Kachel in der Home-App entfernen."
+              "description": "Standardmäßig deaktiviert. Veröffentlicht diese Kamera als eigenes HomeKit-Gerät statt über die Homebridge-Bridge (\"Steuerzentrale\"). Muss danach einmalig manuell in der Home-App hinzugefügt werden (Zubehör hinzufügen, Homebridge-PIN eingeben). War die Kamera vorher gebrückt, zuerst deren alte Kachel in der Home-App entfernen."
             }
           }
         }
