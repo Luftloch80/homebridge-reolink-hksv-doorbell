@@ -159,6 +159,12 @@ export class StreamingDelegate implements CameraStreamingDelegate {
     // running two separate RTSP sessions here was observed to destabilize both the video
     // feed and the HTTP API login on such cameras, so a single connection is used instead.
     const args: string[] = ['-hide_banner', '-loglevel', this.debug ? 'verbose' : 'error'];
+    // ffmpeg's RTSP demuxer defaults to just 1s of stream analysis (vs. 5s generally), which can
+    // end before the first SPS/keyframe arrives. That's harmless when re-encoding (the decoder
+    // parses the SPS itself as it decodes), but with `-codec:v copy` the output muxer relies
+    // entirely on dimensions already probed from the input, so without more time here it fails
+    // with "dimensions not set" / "Could not write header" as soon as the stream is opened.
+    args.push('-analyzeduration', '10000000', '-probesize', '10000000');
     args.push('-rtsp_transport', 'tcp', '-i', rtspUrl);
 
     args.push('-map', '0:v:0', '-an', '-sn', '-dn');
