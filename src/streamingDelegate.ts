@@ -176,9 +176,13 @@ export class StreamingDelegate implements CameraStreamingDelegate {
     // ffmpeg's RTSP demuxer defaults to just 1s of stream analysis (vs. 5s generally), which can
     // end before the first SPS/keyframe arrives. That's harmless when re-encoding (the decoder
     // parses the SPS itself as it decodes), but with `-codec:v copy` the output muxer relies
-    // entirely on dimensions already probed from the input, so without more time here it fails
-    // with "dimensions not set" / "Could not write header" as soon as the stream is opened.
-    args.push('-analyzeduration', '10000000', '-probesize', '10000000');
+    // entirely on dimensions already probed from the input, so without enough time here it can
+    // fail with "dimensions not set" / "Could not write header" as soon as the stream is opened.
+    // 10s (tried previously) is overkill - the SDP already carries the SPS/PPS via
+    // sprop-parameter-sets, so ffmpeg has what it needs almost immediately - and actually made
+    // things worse, observed adding ~8s of pure startup latency before any output was produced,
+    // plausibly long enough for HomeKit's own patience for the stream to start to run out first.
+    args.push('-analyzeduration', '2000000', '-probesize', '1000000');
     args.push('-rtsp_transport', 'tcp', '-i', rtspUrl);
 
     args.push('-map', '0:v:0', '-an', '-sn', '-dn');
