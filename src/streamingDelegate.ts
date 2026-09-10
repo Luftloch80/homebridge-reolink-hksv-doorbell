@@ -203,7 +203,12 @@ export class StreamingDelegate implements CameraStreamingDelegate {
         '-profile:v', h264ProfileToFfmpeg(this.hap, request.video.profile),
         '-level:v', h264LevelToFfmpeg(this.hap, request.video.level),
         '-preset', 'ultrafast',
-        '-tune', 'zerolatency',
+        // `fastdecode` (not `zerolatency`) deliberately: this trades a bit of encode latency for
+        // a simpler bitstream (e.g. disables in-loop deblocking) that's easier for the receiving
+        // decoder to handle - a documented (if imperfect) community workaround for Reolink
+        // cameras specifically getting stuck showing a loading spinner in HomeKit indefinitely,
+        // matching this camera's symptom exactly.
+        '-tune', 'fastdecode',
         '-r', String(request.video.fps),
         '-b:v', `${videoBitrate}k`,
         '-bufsize', `${videoBitrate * 2}k`,
