@@ -163,7 +163,8 @@ export class StreamingDelegate implements CameraStreamingDelegate {
     // advertise (e.g. 2048x1536 vs. our advertised max of 1920x1080), a mismatch that can leave
     // HomeKit unable to decode a single frame. The substream is low enough resolution to reliably
     // fall within what we advertise either way.
-    const rtspUrl = this.reolink.getRtspUrl(this.cameraConfig.liveStream ?? 'sub');
+    const quality = this.cameraConfig.liveStream ?? 'sub';
+    const sourceUrl = this.cameraConfig.liveViewRtmp ? this.reolink.getRtmpUrl(quality) : this.reolink.getRtspUrl(quality);
 
     const videoSrtpSuite = srtpSuiteToFfmpeg(this.hap, prepareRequest.video.srtpCryptoSuite);
     const videoSrtpParams = Buffer.concat([prepareRequest.video.srtp_key, prepareRequest.video.srtp_salt]).toString('base64');
@@ -183,7 +184,11 @@ export class StreamingDelegate implements CameraStreamingDelegate {
     // things worse, observed adding ~8s of pure startup latency before any output was produced,
     // plausibly long enough for HomeKit's own patience for the stream to start to run out first.
     args.push('-analyzeduration', '2000000', '-probesize', '1000000');
-    args.push('-rtsp_transport', 'tcp', '-i', rtspUrl);
+    if (this.cameraConfig.liveViewRtmp) {
+      args.push('-i', sourceUrl);
+    } else {
+      args.push('-rtsp_transport', 'tcp', '-i', sourceUrl);
+    }
 
     args.push('-map', '0:v:0', '-an', '-sn', '-dn');
 

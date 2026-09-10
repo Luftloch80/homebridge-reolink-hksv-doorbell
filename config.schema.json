@@ -203,6 +203,11 @@
               "title": "Als eigenständiges HomeKit-Zubehör (nicht über die Bridge)",
               "type": "boolean",
               "description": "Standardmäßig deaktiviert. Veröffentlicht diese Kamera als eigenes HomeKit-Gerät statt über die Homebridge-Bridge (\"Steuerzentrale\"). Muss danach einmalig manuell in der Home-App hinzugefügt werden (Zubehör hinzufügen, Homebridge-PIN eingeben). War die Kamera vorher gebrückt, zuerst deren alte Kachel in der Home-App entfernen."
+            },
+            "liveViewRtmp": {
+              "title": "RTMP (BCS) statt RTSP für Live-Ansicht verwenden",
+              "type": "boolean",
+              "description": "Standardmäßig deaktiviert (RTSP). Reolinks RTSP-Server basiert auf einer alten, für langsamen Verbindungsaufbau bekannten Bibliothek. RTMP/BCS ist Reolinks eigener, moderner Streaming-Weg (auch von den offiziellen Apps genutzt) und kann zuverlässiger sein, falls die Live-Ansicht dauerhaft lädt."
             }
           }
         }
@@ -264,7 +269,8 @@
             "cameras[].liveViewTranscode",
             "cameras[].prebufferLength",
             "cameras[].fragmentLength",
-            "cameras[].standaloneAccessory"
+            "cameras[].standaloneAccessory",
+            "cameras[].liveViewRtmp"
           ]
         }
       ]

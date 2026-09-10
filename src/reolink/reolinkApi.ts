@@ -196,4 +196,22 @@ export class ReolinkApi {
     const pass = encodeURIComponent(this.config.password);
     return `rtsp://${user}:${pass}@${this.config.host}:${rtspPort}/h264Preview_${channelSegment}_${quality}`;
   }
+
+  /**
+   * Builds the source URL for Reolink's own RTMP-based "BCS" streaming protocol, an alternative
+   * to RTSP that some Reolink setups find noticeably more reliable to establish a live session
+   * with - Reolink's RTSP server is built on an old LIVE555 fork known for slow/flaky session
+   * startup, while BCS/RTMP is Reolink's own more modern streaming path (also used internally by
+   * their own apps). Credentials are passed as query params rather than embedded in the URL
+   * authority, per Reolink's documented BCS URL format.
+   */
+  getRtmpUrl(quality: StreamQuality): string {
+    const streamIndex = { main: 0, sub: 1, ext: 2 }[quality];
+    const user = encodeURIComponent(this.config.username);
+    const pass = encodeURIComponent(this.config.password);
+    return (
+      `rtmp://${this.config.host}:1935/bcs/channel0_${quality}.bcs` +
+      `?channel=${this.channel}&stream=${streamIndex}&user=${user}&password=${pass}`
+    );
+  }
 }

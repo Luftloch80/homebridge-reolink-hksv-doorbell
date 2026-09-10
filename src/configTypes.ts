@@ -81,6 +81,13 @@ export interface CameraConfig {
    * app once, since it's a distinct HomeKit identity from this point on.
    */
   standaloneAccessory?: boolean;
+  /**
+   * Use Reolink's own RTMP-based "BCS" protocol instead of RTSP as the live view source. Off by
+   * default (RTSP). Reolink's RTSP server is built on an old LIVE555 fork known for slow/flaky
+   * session startup; BCS/RTMP is Reolink's own more modern streaming path, also used internally
+   * by their own apps, and has been reported to establish a live session more reliably.
+   */
+  liveViewRtmp?: boolean;
 }
 
 export interface MqttBrokerConfig {
