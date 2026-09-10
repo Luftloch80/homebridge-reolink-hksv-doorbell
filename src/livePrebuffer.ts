@@ -196,7 +196,17 @@ export class LivePrebuffer {
     // (a transcoding session still decodes+encodes downstream from this pipe), and dump_extra
     // keeps SPS/PPS repeating before every keyframe so a session connecting mid-stream can decode
     // immediately instead of waiting for the next time the camera itself repeats them.
-    args.push('-map', '0', '-codec', 'copy', '-bsf:v', 'dump_extra=freq=keyframe');
+    //
+    // h264_metadata=level=auto rewrites the SPS's declared H.264 level to one that actually
+    // matches the stream's real resolution/framerate/bitrate, in place, without re-encoding. This
+    // camera's sub-stream SPS declares Level 5.0 (decoded from its SDP: sprop-parameter-sets
+    // Z0IAMvQFAeiA -> profile_idc 0x42 Baseline, level_idc 50) for a 640x480 stream that plainly
+    // doesn't need it - HomeKit's protocol only knows about levels 3.1/3.2/4.0, and forwarding a
+    // stream whose own SPS claims a level HomeKit never negotiated is a plausible reason a session
+    // can transport perfectly (every RTP packet muxed and delivered, no transport-level error) and
+    // still never render an image: the decoder-facing metadata itself was invalid for HomeKit
+    // regardless of how correct the transport is under it.
+    args.push('-map', '0', '-codec', 'copy', '-bsf:v', 'dump_extra=freq=keyframe,h264_metadata=level=auto');
     args.push('-f', 'mpegts', 'pipe:1');
 
     // Any previously buffered backlog belongs to the old connection - once it's gone, replaying
