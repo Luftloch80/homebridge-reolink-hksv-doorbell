@@ -7,6 +7,15 @@ const IDLE_TIMEOUT_MS = 60000;
 const MIN_STABLE_MS = 3000;
 const BASE_RECONNECT_DELAY_MS = 1000;
 const MAX_RECONNECT_DELAY_MS = 30000;
+// How much recently-seen output to keep around so a newly-joining session can be handed a running
+// start instead of whatever byte happens to be flowing right now. This needs to reliably span at
+// least one full GOP: `dump_extra=freq=keyframe` re-inserts SPS/PPS before every keyframe, but a
+// session that joins live right after one was sent has to wait for the *next* one, which can be
+// several seconds out - long enough that the session's own (deliberately short) analyzeduration
+// gives up first, with ffmpeg unable to determine dimensions at all. Sized generously in bytes
+// rather than time since the actual bitrate depends on the selected stream/quality; a few MB is
+// trivial memory for the many-second cushion it buys.
+const BACKLOG_MAX_BYTES = 4 * 1024 * 1024;
 
 /**
  * Keeps a single background ffmpeg process connected to the camera's RTSP/RTMP source and fans
@@ -28,6 +37,8 @@ export class LivePrebuffer {
   private idleTimer: NodeJS.Timeout | undefined;
   private reconnectTimer: NodeJS.Timeout | undefined;
   private consecutiveFailures = 0;
+  private readonly backlog: Buffer[] = [];
+  private backlogBytes = 0;
 
   constructor(
     private readonly ffmpegPath: string,
@@ -48,6 +59,14 @@ export class LivePrebuffer {
     // ffmpeg crashed but hasn't been released() yet) throws an unhandled 'error' that would crash
     // the whole child bridge process rather than just that one session.
     sink.on('error', () => this.sinks.delete(sink));
+    // Hand the new sink everything buffered so far before it starts receiving live chunks, so it
+    // gets a running start (almost certainly including at least one keyframe+SPS/PPS) instead of
+    // having to wait, live, for the next one to come around. This happens synchronously with no
+    // await in between, so no live chunk can slip in between the backlog replay and the sink being
+    // added to `sinks` below - no gap, no duplicate delivery.
+    if (this.backlog.length > 0) {
+      sink.write(Buffer.concat(this.backlog, this.backlogBytes));
+    }
     this.sinks.add(sink);
     this.ensureRunning();
   }
@@ -91,12 +110,26 @@ export class LivePrebuffer {
     args.push('-map', '0', '-codec', 'copy', '-bsf:v', 'dump_extra=freq=keyframe');
     args.push('-f', 'mpegts', 'pipe:1');
 
+    // Any previously buffered backlog belongs to the old connection - once it's gone, replaying
+    // its (now stale, discontinuous) bytes to a session joining against the new connection would
+    // do more harm than good, so start the new connection with a clean slate.
+    this.backlog.length = 0;
+    this.backlogBytes = 0;
+
     this.log.info(`[${this.label}] Starting live view prebuffer connection`);
     const proc = spawn(this.ffmpegPath, args, { env: process.env });
     this.process = proc;
     const startedAt = Date.now();
 
     proc.stdout.on('data', (chunk: Buffer) => {
+      this.backlog.push(chunk);
+      this.backlogBytes += chunk.length;
+      while (this.backlogBytes > BACKLOG_MAX_BYTES && this.backlog.length > 1) {
+        const dropped = this.backlog.shift();
+        if (dropped) {
+          this.backlogBytes -= dropped.length;
+        }
+      }
       for (const sink of this.sinks) {
         if (!sink.destroyed) {
           sink.write(chunk);
