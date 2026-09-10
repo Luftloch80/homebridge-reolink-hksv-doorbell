@@ -12,10 +12,20 @@ const MAX_RECONNECT_DELAY_MS = 30000;
 // least one full GOP: `dump_extra=freq=keyframe` re-inserts SPS/PPS before every keyframe, but a
 // session that joins live right after one was sent has to wait for the *next* one, which can be
 // several seconds out - long enough that the session's own (deliberately short) analyzeduration
-// gives up first, with ffmpeg unable to determine dimensions at all. Sized generously in bytes
-// rather than time since the actual bitrate depends on the selected stream/quality; a few MB is
-// trivial memory for the many-second cushion it buys.
-const BACKLOG_MAX_BYTES = 4 * 1024 * 1024;
+// gives up first, with ffmpeg unable to determine dimensions at all.
+//
+// Bounded by *time*, not size: the whole backlog gets replayed to a new sink in one instantaneous
+// burst, which the session's own ffmpeg then races through many times faster than real time before
+// it catches up to the live edge (observed at up to 30-40x in practice) - visible in HomeKit as a
+// blurry fast-forward instant before playback settles, not a smooth stream start. A byte-based cap
+// sized generously enough to survive a low-bitrate substream (some tens of KB/s) ends up holding
+// many tens of seconds of history once the connection has been kept warm for a while, making that
+// burst long enough to be clearly visible. A few seconds of history reliably covers a camera's GOP
+// interval (typically 1-2s) while keeping the catch-up burst itself brief enough to be unnoticeable.
+const BACKLOG_MAX_AGE_MS = 3000;
+// Absolute safety net regardless of age, in case of an unexpectedly high-bitrate source - not the
+// normal way this trims.
+const BACKLOG_MAX_BYTES = 2 * 1024 * 1024;
 
 /**
  * Keeps a single background ffmpeg process connected to the camera's RTSP/RTMP source and fans
@@ -37,7 +47,7 @@ export class LivePrebuffer {
   private idleTimer: NodeJS.Timeout | undefined;
   private reconnectTimer: NodeJS.Timeout | undefined;
   private consecutiveFailures = 0;
-  private readonly backlog: Buffer[] = [];
+  private readonly backlog: { chunk: Buffer; at: number }[] = [];
   private backlogBytes = 0;
 
   constructor(
@@ -65,7 +75,7 @@ export class LivePrebuffer {
     // await in between, so no live chunk can slip in between the backlog replay and the sink being
     // added to `sinks` below - no gap, no duplicate delivery.
     if (this.backlog.length > 0) {
-      sink.write(Buffer.concat(this.backlog, this.backlogBytes));
+      sink.write(Buffer.concat(this.backlog.map((entry) => entry.chunk), this.backlogBytes));
     }
     this.sinks.add(sink);
     this.ensureRunning();
@@ -122,12 +132,16 @@ export class LivePrebuffer {
     const startedAt = Date.now();
 
     proc.stdout.on('data', (chunk: Buffer) => {
-      this.backlog.push(chunk);
+      const now = Date.now();
+      this.backlog.push({ chunk, at: now });
       this.backlogBytes += chunk.length;
-      while (this.backlogBytes > BACKLOG_MAX_BYTES && this.backlog.length > 1) {
+      while (
+        this.backlog.length > 1 &&
+        (now - this.backlog[0].at > BACKLOG_MAX_AGE_MS || this.backlogBytes > BACKLOG_MAX_BYTES)
+      ) {
         const dropped = this.backlog.shift();
         if (dropped) {
-          this.backlogBytes -= dropped.length;
+          this.backlogBytes -= dropped.chunk.length;
         }
       }
       for (const sink of this.sinks) {
