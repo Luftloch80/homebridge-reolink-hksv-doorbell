@@ -158,7 +158,12 @@ export class StreamingDelegate implements CameraStreamingDelegate {
     }
 
     const { request: prepareRequest, localVideoPort, localAudioPort } = pending;
-    const rtspUrl = this.reolink.getRtspUrl(this.cameraConfig.liveStream ?? 'main');
+    // In copy mode we send whatever resolution the selected stream actually is, regardless of
+    // what HomeKit negotiated - the main stream is commonly well above the highest resolution we
+    // advertise (e.g. 2048x1536 vs. our advertised max of 1920x1080), a mismatch that can leave
+    // HomeKit unable to decode a single frame. The substream is low enough resolution to reliably
+    // fall within what we advertise either way.
+    const rtspUrl = this.reolink.getRtspUrl(this.cameraConfig.liveStream ?? 'sub');
 
     const videoSrtpSuite = srtpSuiteToFfmpeg(this.hap, prepareRequest.video.srtpCryptoSuite);
     const videoSrtpParams = Buffer.concat([prepareRequest.video.srtp_key, prepareRequest.video.srtp_salt]).toString('base64');

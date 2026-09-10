@@ -155,7 +155,8 @@
               "title": "Stream für Live-Ansicht",
               "type": "string",
               "enum": ["main", "sub", "ext"],
-              "enumNames": ["Hauptstream (main, Standard)", "Substream (sub)", "Erweitert (ext)"]
+              "enumNames": ["Hauptstream (main)", "Substream (sub, Standard, empfohlen)", "Erweitert (ext)"],
+              "description": "Der Hauptstream liegt oft in einer höheren Auflösung als alles, was wir HomeKit ankündigen, was die Live-Ansicht im Durchreich-Modus (Copy) unzuverlässig machen kann. Der Substream ist niedrig genug aufgelöst, um sicher zu passen."
             },
             "recordingStream": {
               "title": "Stream für HKSV-Aufnahme",
