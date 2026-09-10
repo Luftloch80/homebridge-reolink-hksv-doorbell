@@ -155,7 +155,8 @@
               "title": "Stream für Live-Ansicht",
               "type": "string",
               "enum": ["main", "sub", "ext"],
-              "enumNames": ["Hauptstream (main, Standard)", "Substream (sub)", "Erweitert (ext)"]
+              "enumNames": ["Hauptstream (main)", "Substream (sub, Standard, empfohlen)", "Erweitert (ext)"],
+              "description": "Der Substream wird standardmäßig neu kodiert (siehe unten), was bei niedriger Auflösung CPU-günstig ist und exakt zur von HomeKit erwarteten Auflösung passt."
             },
             "recordingStream": {
               "title": "Stream für HKSV-Aufnahme",
@@ -196,7 +197,7 @@
             "liveViewTranscode": {
               "title": "Live-Ansicht neu kodieren (Transcoding)",
               "type": "boolean",
-              "description": "Standardmäßig deaktiviert: Der H.264-Videostream der Kamera wird unverändert durchgereicht, um CPU-Last auf leistungsschwacher Hardware (z. B. Raspberry Pi) zu vermeiden. Nur aktivieren, wenn exakte Kontrolle über Profil/Level/Bitrate benötigt wird."
+              "description": "Standardmäßig aktiviert: Der Videostream wird auf genau die von HomeKit erwartete Auflösung/Profil kodiert. Zusammen mit dem Substream als Live-Ansicht-Quelle ist das auch auf schwacher Hardware (z. B. Raspberry Pi) günstig. Nur deaktivieren (unveränderter Durchreich-Modus), wenn CPU-Last wichtiger als Zuverlässigkeit ist - kann dazu führen, dass die Live-Ansicht nach dem ersten Bild dauerhaft lädt, falls Auflösung/Profil der Kamera nicht zu HomeKit passen."
             },
             "standaloneAccessory": {
               "title": "Als eigenständiges HomeKit-Zubehör (nicht über die Bridge)",
