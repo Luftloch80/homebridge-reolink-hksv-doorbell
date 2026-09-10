@@ -199,7 +199,11 @@ export class StreamingDelegate implements CameraStreamingDelegate {
       // Default: the camera already sends H.264, which HomeKit accepts directly, so the
       // stream is passed through untouched instead of being decoded and re-encoded. Relies on
       // the RTCP port fix above (not a resolution/profile mismatch) for reliable playback.
-      args.push('-codec:v', 'copy');
+      // `dump_extra` re-inserts the stream's SPS/PPS before every keyframe rather than only
+      // once at the very start of the RTSP session - HomeKit has no SDP exchange to fall back
+      // on to learn these parameters, so if it doesn't catch that first, one-time copy it can
+      // never decode a single frame, which looks exactly like indefinite buffering.
+      args.push('-codec:v', 'copy', '-bsf:v', 'dump_extra=freq=keyframe');
     }
 
     args.push(

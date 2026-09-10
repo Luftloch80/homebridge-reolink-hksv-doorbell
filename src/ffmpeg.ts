@@ -25,6 +25,7 @@ export class FfmpegProcess {
   readonly process: ChildProcessWithoutNullStreams;
   readonly exited: Promise<void>;
   private stderrTail: string[] = [];
+  private stopRequested = false;
 
   constructor(ffmpegPath: string, args: string[], private readonly log: Logger, label: string, debug: boolean) {
     // `log.debug()` is gated by Homebridge's own global debug mode, which is a separate switch
@@ -55,7 +56,11 @@ export class FfmpegProcess {
       // finished delivering its buffered 'data' events, which previously produced error messages
       // with an empty stderr tail even though ffmpeg had actually logged the real failure reason.
       this.process.once('close', (code, signal) => {
-        if (code === null || code === 0 || signal === 'SIGKILL' || signal === 'SIGTERM') {
+        // ffmpeg installs its own SIGTERM handler and, after cleaning up, calls exit(255) itself
+        // rather than dying "by" the signal - so Node reports a plain code=255/signal=null close
+        // here, not signal='SIGTERM', for what is actually the graceful shutdown we asked for via
+        // stop(). Without tracking that we requested the stop, this looked identical to a crash.
+        if (this.stopRequested || code === null || code === 0 || signal === 'SIGKILL' || signal === 'SIGTERM') {
           resolve();
         } else {
           reject(new Error(`ffmpeg [${label}] exited with code ${code}:\n${this.stderrTail.join('')}`));
@@ -66,6 +71,7 @@ export class FfmpegProcess {
 
   stop(): void {
     if (this.process.exitCode === null && !this.process.killed) {
+      this.stopRequested = true;
       this.process.stdin.end();
       // Give ffmpeg a chance to shut down its streams gracefully before force-killing it.
       setTimeout(() => {
