@@ -7,25 +7,25 @@ const IDLE_TIMEOUT_MS = 60000;
 const MIN_STABLE_MS = 3000;
 const BASE_RECONNECT_DELAY_MS = 1000;
 const MAX_RECONNECT_DELAY_MS = 30000;
-// How much recently-seen output to keep around so a newly-joining session can be handed a running
-// start instead of whatever byte happens to be flowing right now. This needs to reliably span at
-// least one full GOP: `dump_extra=freq=keyframe` re-inserts SPS/PPS before every keyframe, but a
-// session that joins live right after one was sent has to wait for the *next* one, which can be
-// several seconds out - long enough that the session's own (deliberately short) analyzeduration
-// gives up first, with ffmpeg unable to determine dimensions at all.
-//
-// Bounded by *time*, not size: the whole backlog gets replayed to a new sink in one instantaneous
-// burst, which the session's own ffmpeg then races through many times faster than real time before
-// it catches up to the live edge (observed at up to 30-40x in practice) - visible in HomeKit as a
-// blurry fast-forward instant before playback settles, not a smooth stream start. A byte-based cap
-// sized generously enough to survive a low-bitrate substream (some tens of KB/s) ends up holding
-// many tens of seconds of history once the connection has been kept warm for a while, making that
-// burst long enough to be clearly visible. A few seconds of history reliably covers a camera's GOP
-// interval (typically 1-2s) while keeping the catch-up burst itself brief enough to be unnoticeable.
-const BACKLOG_MAX_AGE_MS = 3000;
+const TS_PACKET_SIZE = 188;
+// How much recently-seen output to *keep available* so a newly-joining session can be handed a
+// running start instead of whatever byte happens to be flowing right now - this needs to reliably
+// span at least one full GOP, since `dump_extra=freq=keyframe` only re-inserts SPS/PPS before every
+// keyframe. This window is intentionally generous (matching Scrypted's rebroadcast plugin, which
+// keeps 10s) because - unlike an earlier version of this class - it no longer determines how much
+// gets *replayed*: see lastKeyframeBytePos below and getBacklogSinceLastKeyframe(). A wide window
+// mainly guards against unusually long GOP configurations; it doesn't cost a longer catch-up burst.
+const BACKLOG_MAX_AGE_MS = 8000;
 // Absolute safety net regardless of age, in case of an unexpectedly high-bitrate source - not the
 // normal way this trims.
-const BACKLOG_MAX_BYTES = 2 * 1024 * 1024;
+const BACKLOG_MAX_BYTES = 6 * 1024 * 1024;
+
+interface BacklogEntry {
+  chunk: Buffer;
+  at: number;
+  /** Byte offset of this chunk's first byte within the connection's continuous output stream. */
+  startByte: number;
+}
 
 /**
  * Keeps a single background ffmpeg process connected to the camera's RTSP/RTMP source and fans
@@ -40,6 +40,14 @@ const BACKLOG_MAX_BYTES = 2 * 1024 * 1024;
  * session just has to pick up mid-stream, which ffmpeg does almost instantly since it doesn't
  * need to renegotiate anything - just find the next PAT/PMT and SPS, both of which repeat
  * constantly in a running MPEG-TS stream.
+ *
+ * A newly-joining session is handed the backlog *since the most recently seen keyframe* rather
+ * than the whole backlog window - found by scanning the MPEG-TS stream's own packet headers for
+ * the random_access_indicator flag (matching what Scrypted's rebroadcast plugin does via NAL
+ * parsing, adapted here to the TS container ffmpeg wraps this output in). Without this, a session
+ * joining a connection that's been kept warm for a while gets the *entire* multi-second window
+ * dumped on it at once, which its own ffmpeg then races through far faster than real time before
+ * settling to live - visible in HomeKit as a blurry fast-forward instant rather than a clean start.
  */
 export class LivePrebuffer {
   private process: ChildProcessWithoutNullStreams | undefined;
@@ -47,8 +55,13 @@ export class LivePrebuffer {
   private idleTimer: NodeJS.Timeout | undefined;
   private reconnectTimer: NodeJS.Timeout | undefined;
   private consecutiveFailures = 0;
-  private readonly backlog: { chunk: Buffer; at: number }[] = [];
+  private readonly backlog: BacklogEntry[] = [];
   private backlogBytes = 0;
+  private totalBytes = 0;
+  /** Leftover bytes (< one TS packet) carried over between stdout chunks so packet parsing stays aligned regardless of how the OS happens to chunk the pipe. */
+  private tsCarry: Buffer = Buffer.alloc(0);
+  /** Absolute byte offset (in the same coordinate space as BacklogEntry.startByte) of the start of the most recently seen keyframe's TS packet, or -1 if none has been seen yet on this connection. */
+  private lastKeyframeBytePos = -1;
 
   constructor(
     private readonly ffmpegPath: string,
@@ -69,16 +82,82 @@ export class LivePrebuffer {
     // ffmpeg crashed but hasn't been released() yet) throws an unhandled 'error' that would crash
     // the whole child bridge process rather than just that one session.
     sink.on('error', () => this.sinks.delete(sink));
-    // Hand the new sink everything buffered so far before it starts receiving live chunks, so it
-    // gets a running start (almost certainly including at least one keyframe+SPS/PPS) instead of
-    // having to wait, live, for the next one to come around. This happens synchronously with no
-    // await in between, so no live chunk can slip in between the backlog replay and the sink being
-    // added to `sinks` below - no gap, no duplicate delivery.
-    if (this.backlog.length > 0) {
-      sink.write(Buffer.concat(this.backlog.map((entry) => entry.chunk), this.backlogBytes));
+    // Hand the new sink the backlog since the last known keyframe before it starts receiving live
+    // chunks, so it gets a running start (a keyframe+SPS/PPS right at the beginning of what it
+    // receives) instead of having to wait, live, for the next one to come around. This happens
+    // synchronously with no await in between, so no live chunk can slip in between the backlog
+    // replay and the sink being added to `sinks` below - no gap, no duplicate delivery.
+    const replay = this.getBacklogSinceLastKeyframe();
+    if (replay.length > 0) {
+      sink.write(replay);
     }
     this.sinks.add(sink);
     this.ensureRunning();
+  }
+
+  /**
+   * Returns the backlog trimmed to start at the most recently detected keyframe, so a joining
+   * session gets the smallest amount of "past" data that still reliably includes one. Falls back
+   * to the full backlog if no keyframe has been located yet (e.g. right at connection start) -
+   * the same behavior this class had before keyframe-precise trimming existed.
+   */
+  private getBacklogSinceLastKeyframe(): Buffer {
+    if (this.backlog.length === 0) {
+      return Buffer.alloc(0);
+    }
+    if (this.lastKeyframeBytePos < 0) {
+      return Buffer.concat(this.backlog.map((entry) => entry.chunk), this.backlogBytes);
+    }
+    const parts: Buffer[] = [];
+    let total = 0;
+    for (const entry of this.backlog) {
+      if (entry.startByte + entry.chunk.length <= this.lastKeyframeBytePos) {
+        continue;
+      }
+      const sliceStart = Math.max(0, this.lastKeyframeBytePos - entry.startByte);
+      const piece = sliceStart > 0 ? entry.chunk.subarray(sliceStart) : entry.chunk;
+      parts.push(piece);
+      total += piece.length;
+    }
+    return Buffer.concat(parts, total);
+  }
+
+  /**
+   * Scans a chunk of MPEG-TS output for packets that mark the start of a keyframe access unit,
+   * updating lastKeyframeBytePos when one is found. TS packets are a fixed 188 bytes, but stdout
+   * delivers arbitrary byte chunks with no relation to that boundary, so leftover bytes from an
+   * incomplete trailing packet are carried over (via tsCarry) and prepended to the next chunk.
+   *
+   * A packet marks a keyframe start when its payload_unit_start_indicator is set (a new access
+   * unit begins here) and its adaptation field's random_access_indicator is set - ffmpeg's mpegts
+   * muxer sets this for the video stream specifically at each keyframe, which - combined with
+   * `dump_extra=freq=keyframe` upstream guaranteeing SPS/PPS immediately follows - is exactly the
+   * point a joining session needs to start reading from.
+   */
+  private scanForKeyframes(chunk: Buffer, chunkStartByte: number): void {
+    const buf = this.tsCarry.length > 0 ? Buffer.concat([this.tsCarry, chunk]) : chunk;
+    const bufStartByte = chunkStartByte - this.tsCarry.length;
+    let offset = 0;
+    while (offset + TS_PACKET_SIZE <= buf.length) {
+      if (buf[offset] !== 0x47) {
+        // Lost sync with the 188-byte packet grid - shouldn't normally happen against ffmpeg's own
+        // mpegts output, but resync defensively rather than misreading adaptation field flags from
+        // the wrong byte offset for the rest of the stream.
+        offset += 1;
+        continue;
+      }
+      const payloadUnitStart = (buf[offset + 1] & 0x40) !== 0;
+      const adaptationFieldControl = (buf[offset + 3] & 0x30) >> 4;
+      const hasAdaptationField = adaptationFieldControl === 2 || adaptationFieldControl === 3;
+      if (payloadUnitStart && hasAdaptationField) {
+        const adaptationFieldLength = buf[offset + 4];
+        if (adaptationFieldLength > 0 && (buf[offset + 5] & 0x40) !== 0) {
+          this.lastKeyframeBytePos = bufStartByte + offset;
+        }
+      }
+      offset += TS_PACKET_SIZE;
+    }
+    this.tsCarry = buf.subarray(offset);
   }
 
   /** Unregisters a session. The background connection is kept warm for a short idle window in case another session starts soon, then torn down. */
@@ -122,9 +201,14 @@ export class LivePrebuffer {
 
     // Any previously buffered backlog belongs to the old connection - once it's gone, replaying
     // its (now stale, discontinuous) bytes to a session joining against the new connection would
-    // do more harm than good, so start the new connection with a clean slate.
+    // do more harm than good, so start the new connection with a clean slate. The byte-offset
+    // tracking and keyframe scan state reset the same way, since they're only meaningful relative
+    // to a single connection's continuous output stream.
     this.backlog.length = 0;
     this.backlogBytes = 0;
+    this.totalBytes = 0;
+    this.tsCarry = Buffer.alloc(0);
+    this.lastKeyframeBytePos = -1;
 
     this.log.info(`[${this.label}] Starting live view prebuffer connection`);
     const proc = spawn(this.ffmpegPath, args, { env: process.env });
@@ -133,7 +217,11 @@ export class LivePrebuffer {
 
     proc.stdout.on('data', (chunk: Buffer) => {
       const now = Date.now();
-      this.backlog.push({ chunk, at: now });
+      const startByte = this.totalBytes;
+      this.totalBytes += chunk.length;
+      this.scanForKeyframes(chunk, startByte);
+
+      this.backlog.push({ chunk, at: now, startByte });
       this.backlogBytes += chunk.length;
       while (
         this.backlog.length > 1 &&
