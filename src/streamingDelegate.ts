@@ -1,3 +1,4 @@
+import { createSocket } from 'node:dgram';
 import type { Writable } from 'node:stream';
 import type {
   CameraStreamingDelegate,
@@ -55,6 +56,49 @@ function toFfmpegSsrc(ssrc: number): number {
   return ssrc > 0x7fffffff ? ssrc - 0x100000000 : ssrc;
 }
 
+const VIDEO_RTCP_WAIT_TIMEOUT_MS = 1500;
+
+/**
+ * Waits briefly for the first inbound packet on the local video RTCP port before any video is
+ * sent - a documented HomeKit compatibility workaround (used by e.g. Scrypted's HomeKit plugin,
+ * particularly for clients without a Home Hub): starting to send video before the client's own
+ * RTP/SRTP receiver has finished setting up can leave some HomeKit clients showing no image at
+ * all, even though the video is being sent and received without any transport-level error.
+ *
+ * This briefly binds its own probe socket to the port ffmpeg will use for `-localrtcpport`, since
+ * that's the only way to observe traffic on it before ffmpeg itself binds the same port. Best
+ * effort only: if nothing arrives before the timeout, streaming proceeds anyway rather than
+ * risking a client that never sends RTCP at all (e.g. one that only does so after receiving the
+ * first video packet).
+ */
+function waitForFirstRtcp(port: number, log: Logger, label: string): Promise<void> {
+  return new Promise((resolve) => {
+    const socket = createSocket('udp4');
+    let settled = false;
+
+    const finish = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      socket.close(() => resolve());
+    };
+
+    const timer = setTimeout(finish, VIDEO_RTCP_WAIT_TIMEOUT_MS);
+    // unref() so this timer alone can't keep the process/tests alive if something else
+    // (e.g. the port being unavailable) short-circuits the flow before it fires.
+    timer.unref?.();
+
+    socket.once('error', (error) => {
+      log.warn(`[${label}] Video RTCP readiness probe failed, proceeding without it: ${error.message}`);
+      finish();
+    });
+    socket.once('message', finish);
+    socket.bind(port);
+  });
+}
+
 interface OngoingSession {
   ffmpeg: FfmpegProcess;
   localVideoPort: number;
@@ -76,6 +120,7 @@ interface PendingSession {
 export class StreamingDelegate implements CameraStreamingDelegate {
   private readonly pendingSessions = new Map<string, PendingSession>();
   private readonly ongoingSessions = new Map<string, OngoingSession>();
+  private readonly cancelledSessions = new Set<string>();
   private prebuffer: LivePrebuffer | undefined;
 
   constructor(
@@ -161,6 +206,16 @@ export class StreamingDelegate implements CameraStreamingDelegate {
       return;
     }
 
+    // Acknowledge the start request immediately - HomeKit expects a prompt response here, and the
+    // rest of streaming setup (including the RTCP readiness wait below) happens asynchronously
+    // afterwards, matching how other mature HomeKit integrations (e.g. Scrypted) structure this.
+    callback();
+    this.startStreamAsync(request, pending).catch((error: Error) => {
+      this.log.error(`[${this.cameraConfig.name}] Failed to start live stream: ${error.message}`);
+    });
+  }
+
+  private async startStreamAsync(request: StartStreamRequest, pending: PendingSession): Promise<void> {
     const { request: prepareRequest, localVideoPort, localAudioPort } = pending;
     // In copy mode we send whatever resolution the selected stream actually is, regardless of
     // what HomeKit negotiated - the main stream is commonly well above the highest resolution we
@@ -236,8 +291,15 @@ export class StreamingDelegate implements CameraStreamingDelegate {
       // RTCP), while `localrtcpport` is where we listen for RTCP locally - previously both were
       // set to our own local port, which sent RTCP reports nowhere HomeKit was listening and left
       // the live view stuck showing one frame and buffering indefinitely.
+      //
+      // The packet size is capped to 1200 rather than trusting HomeKit's own negotiated MTU
+      // (commonly ~1378): that value is documented as unreliable in practice (Scrypted's HomeKit
+      // plugin applies the same 1200-byte cap for the same reason) - a payload that's actually too
+      // large for the real network path gets silently dropped rather than fragmented, which looks
+      // identical from ffmpeg's side (packets successfully muxed and sent) to a client that never
+      // renders any image.
       `srtp://${prepareRequest.targetAddress}:${prepareRequest.video.port}` +
-        `?rtcpport=${prepareRequest.video.port}&localrtcpport=${localVideoPort}&pkt_size=${Math.min(request.video.mtu, 1378)}`,
+        `?rtcpport=${prepareRequest.video.port}&localrtcpport=${localVideoPort}&pkt_size=${Math.min(request.video.mtu, 1200)}`,
     );
 
     if (this.cameraConfig.enableAudio !== false) {
@@ -263,6 +325,18 @@ export class StreamingDelegate implements CameraStreamingDelegate {
       );
     }
 
+    // Best-effort wait for the client's own RTP/RTCP receiver to signal readiness before any video
+    // is actually sent - see waitForFirstRtcp() for why. HomeKit was already acknowledged above, so
+    // this delay is invisible to the START request itself.
+    await waitForFirstRtcp(localVideoPort, this.log, this.cameraConfig.name);
+
+    if (this.cancelledSessions.delete(request.sessionID)) {
+      // The client already stopped this stream (e.g. closed the Home app) while we were still
+      // waiting on RTCP - stopStream() found nothing to tear down at the time since this session
+      // hadn't been added to ongoingSessions yet, so it's on us to not spawn ffmpeg at all now.
+      return;
+    }
+
     const ffmpeg = new FfmpegProcess(this.ffmpegPath, args, this.log, `${this.cameraConfig.name} live`, this.debug);
     ffmpeg.exited.catch((error: Error) => {
       this.log.error(`[${this.cameraConfig.name}] Live stream ffmpeg process ended unexpectedly: ${error.message}`);
@@ -272,7 +346,6 @@ export class StreamingDelegate implements CameraStreamingDelegate {
     this.prebuffer.acquire(prebufferSink);
 
     this.ongoingSessions.set(request.sessionID, { ffmpeg, localVideoPort, localAudioPort, prebufferSink });
-    callback();
   }
 
   private stopStream(sessionID: string): void {
@@ -281,6 +354,12 @@ export class StreamingDelegate implements CameraStreamingDelegate {
       this.prebuffer?.release(session.prebufferSink);
       session.ffmpeg.stop();
       this.ongoingSessions.delete(sessionID);
+    } else {
+      // The session may still be mid-startup (e.g. inside the RTCP readiness wait in
+      // startStreamAsync(), which hasn't populated ongoingSessions yet) - flag it as cancelled so
+      // that code notices and skips spawning ffmpeg instead of leaking a process for a stream
+      // nobody's watching anymore.
+      this.cancelledSessions.add(sessionID);
     }
     this.pendingSessions.delete(sessionID);
   }
