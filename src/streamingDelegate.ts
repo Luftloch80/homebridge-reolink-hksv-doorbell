@@ -1,3 +1,4 @@
+import type { Writable } from 'node:stream';
 import type {
   CameraStreamingDelegate,
   HAP,
@@ -13,6 +14,7 @@ import type {
 } from 'homebridge';
 import type { CameraConfig } from './configTypes';
 import { FfmpegProcess } from './ffmpeg';
+import { LivePrebuffer } from './livePrebuffer';
 import { reservePorts } from './ports';
 import type { ReolinkApi } from './reolink/reolinkApi';
 
@@ -57,6 +59,7 @@ interface OngoingSession {
   ffmpeg: FfmpegProcess;
   localVideoPort: number;
   localAudioPort: number;
+  prebufferSink: Writable;
 }
 
 /**
@@ -73,6 +76,7 @@ interface PendingSession {
 export class StreamingDelegate implements CameraStreamingDelegate {
   private readonly pendingSessions = new Map<string, PendingSession>();
   private readonly ongoingSessions = new Map<string, OngoingSession>();
+  private prebuffer: LivePrebuffer | undefined;
 
   constructor(
     private readonly hap: HAP,
@@ -164,31 +168,31 @@ export class StreamingDelegate implements CameraStreamingDelegate {
     // HomeKit unable to decode a single frame. The substream is low enough resolution to reliably
     // fall within what we advertise either way.
     const quality = this.cameraConfig.liveStream ?? 'sub';
-    const sourceUrl = this.cameraConfig.liveViewRtmp ? this.reolink.getRtmpUrl(quality) : this.reolink.getRtspUrl(quality);
+
+    // A background connection to the camera is kept warm by a single shared prebuffer instead of
+    // each session opening (and fully re-analyzing) its own fresh RTSP/RTMP connection - that
+    // full renegotiation was observed taking several real seconds even with tuned analyzeduration
+    // settings, plausibly outlasting HomeKit's own patience for the stream to start. A session
+    // connecting mid-stream to the prebuffer's already-flowing, already-analyzed MPEG-TS output
+    // picks up almost immediately instead.
+    if (!this.prebuffer) {
+      const sourceUrl = this.cameraConfig.liveViewRtmp ? this.reolink.getRtmpUrl(quality) : this.reolink.getRtspUrl(quality);
+      this.prebuffer = new LivePrebuffer(
+        this.ffmpegPath,
+        sourceUrl,
+        this.cameraConfig.liveViewRtmp === true,
+        this.log,
+        `${this.cameraConfig.name} live`,
+        this.debug,
+      );
+    }
 
     const videoSrtpSuite = srtpSuiteToFfmpeg(this.hap, prepareRequest.video.srtpCryptoSuite);
     const videoSrtpParams = Buffer.concat([prepareRequest.video.srtp_key, prepareRequest.video.srtp_salt]).toString('base64');
 
-    // Video and audio share a single ffmpeg process (one RTSP connection to the camera).
-    // Reolink cameras commonly cap total concurrent connections (RTSP + HTTP API combined);
-    // running two separate RTSP sessions here was observed to destabilize both the video
-    // feed and the HTTP API login on such cameras, so a single connection is used instead.
     const args: string[] = ['-hide_banner', '-loglevel', this.debug ? 'verbose' : 'error'];
-    // ffmpeg's RTSP demuxer defaults to just 1s of stream analysis (vs. 5s generally), which can
-    // end before the first SPS/keyframe arrives. That's harmless when re-encoding (the decoder
-    // parses the SPS itself as it decodes), but with `-codec:v copy` the output muxer relies
-    // entirely on dimensions already probed from the input, so without enough time here it can
-    // fail with "dimensions not set" / "Could not write header" as soon as the stream is opened.
-    // 10s (tried previously) is overkill - the SDP already carries the SPS/PPS via
-    // sprop-parameter-sets, so ffmpeg has what it needs almost immediately - and actually made
-    // things worse, observed adding ~8s of pure startup latency before any output was produced,
-    // plausibly long enough for HomeKit's own patience for the stream to start to run out first.
     args.push('-analyzeduration', '2000000', '-probesize', '1000000');
-    if (this.cameraConfig.liveViewRtmp) {
-      args.push('-i', sourceUrl);
-    } else {
-      args.push('-rtsp_transport', 'tcp', '-i', sourceUrl);
-    }
+    args.push('-i', 'pipe:0');
 
     args.push('-map', '0:v:0', '-an', '-sn', '-dn');
 
@@ -217,12 +221,9 @@ export class StreamingDelegate implements CameraStreamingDelegate {
     } else {
       // Default: the camera already sends H.264, which HomeKit accepts directly, so the
       // stream is passed through untouched instead of being decoded and re-encoded. Relies on
-      // the RTCP port fix above (not a resolution/profile mismatch) for reliable playback.
-      // `dump_extra` re-inserts the stream's SPS/PPS before every keyframe rather than only
-      // once at the very start of the RTSP session - HomeKit has no SDP exchange to fall back
-      // on to learn these parameters, so if it doesn't catch that first, one-time copy it can
-      // never decode a single frame, which looks exactly like indefinite buffering.
-      args.push('-codec:v', 'copy', '-bsf:v', 'dump_extra=freq=keyframe');
+      // the RTCP port fix above (not a resolution/profile mismatch) for reliable playback. SPS/PPS
+      // re-insertion before every keyframe is already handled once, upstream, by the prebuffer.
+      args.push('-codec:v', 'copy');
     }
 
     args.push(
@@ -267,13 +268,17 @@ export class StreamingDelegate implements CameraStreamingDelegate {
       this.log.error(`[${this.cameraConfig.name}] Live stream ffmpeg process ended unexpectedly: ${error.message}`);
     });
 
-    this.ongoingSessions.set(request.sessionID, { ffmpeg, localVideoPort, localAudioPort });
+    const prebufferSink = ffmpeg.process.stdin;
+    this.prebuffer.acquire(prebufferSink);
+
+    this.ongoingSessions.set(request.sessionID, { ffmpeg, localVideoPort, localAudioPort, prebufferSink });
     callback();
   }
 
   private stopStream(sessionID: string): void {
     const session = this.ongoingSessions.get(sessionID);
     if (session) {
+      this.prebuffer?.release(session.prebufferSink);
       session.ffmpeg.stop();
       this.ongoingSessions.delete(sessionID);
     }
