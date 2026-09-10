@@ -158,12 +158,7 @@ export class StreamingDelegate implements CameraStreamingDelegate {
     }
 
     const { request: prepareRequest, localVideoPort, localAudioPort } = pending;
-    // The substream is low enough resolution that transcoding it is cheap, and transcoding lets
-    // us produce exactly the resolution/profile/level HomeKit negotiated. Passing the (often much
-    // higher-resolution) main stream through untouched via `-codec:v copy` skips that negotiation
-    // entirely, which some HomeKit clients tolerate and others don't - observed in practice as the
-    // Home app showing the first frame and then buffering indefinitely.
-    const rtspUrl = this.reolink.getRtspUrl(this.cameraConfig.liveStream ?? 'sub');
+    const rtspUrl = this.reolink.getRtspUrl(this.cameraConfig.liveStream ?? 'main');
 
     const videoSrtpSuite = srtpSuiteToFfmpeg(this.hap, prepareRequest.video.srtpCryptoSuite);
     const videoSrtpParams = Buffer.concat([prepareRequest.video.srtp_key, prepareRequest.video.srtp_salt]).toString('base64');
@@ -183,11 +178,10 @@ export class StreamingDelegate implements CameraStreamingDelegate {
 
     args.push('-map', '0:v:0', '-an', '-sn', '-dn');
 
-    if (this.cameraConfig.liveViewTranscode !== false) {
-      // Default: re-encode to exactly the profile/level/resolution/bitrate HomeKit negotiated.
-      // Combined with defaulting liveStream to the substream (low resolution), this keeps the
-      // real-time software encode cheap enough for constrained hardware like a Raspberry Pi
-      // while staying spec-correct - passthrough further down skips that negotiation entirely.
+    if (this.cameraConfig.liveViewTranscode) {
+      // Re-encoding gives exact control over the negotiated profile/level/resolution/bitrate,
+      // at the cost of real-time software decode+encode CPU load - noticeably heavy on boards
+      // like a Raspberry Pi for higher camera resolutions.
       const videoBitrate = this.cameraConfig.maxBitrate ?? Math.min(request.video.max_bit_rate, 2000);
       args.push(
         '-codec:v', 'libx264',
@@ -202,10 +196,9 @@ export class StreamingDelegate implements CameraStreamingDelegate {
         '-maxrate', `${videoBitrate}k`,
       );
     } else {
-      // Opt-out: pass the camera's H.264 through untouched instead of re-encoding. Saves CPU,
-      // but skips HomeKit's negotiated resolution/profile entirely - some HomeKit clients handle
-      // that mismatch fine, others show the first frame and then buffer indefinitely. Only safe
-      // when the source stream's own resolution/profile already fits what was negotiated.
+      // Default: the camera already sends H.264, which HomeKit accepts directly, so the
+      // stream is passed through untouched instead of being decoded and re-encoded. Relies on
+      // the RTCP port fix above (not a resolution/profile mismatch) for reliable playback.
       args.push('-codec:v', 'copy');
     }
 
@@ -215,8 +208,12 @@ export class StreamingDelegate implements CameraStreamingDelegate {
       '-f', 'rtp',
       '-srtp_out_suite', videoSrtpSuite,
       '-srtp_out_params', videoSrtpParams,
+      // `rtcpport` is the *remote* RTCP port (HomeKit's own single `port` covers both RTP and
+      // RTCP), while `localrtcpport` is where we listen for RTCP locally - previously both were
+      // set to our own local port, which sent RTCP reports nowhere HomeKit was listening and left
+      // the live view stuck showing one frame and buffering indefinitely.
       `srtp://${prepareRequest.targetAddress}:${prepareRequest.video.port}` +
-        `?rtcpport=${localVideoPort}&localrtcpport=${localVideoPort}&pkt_size=${Math.min(request.video.mtu, 1378)}`,
+        `?rtcpport=${prepareRequest.video.port}&localrtcpport=${localVideoPort}&pkt_size=${Math.min(request.video.mtu, 1378)}`,
     );
 
     if (this.cameraConfig.enableAudio !== false) {
@@ -238,7 +235,7 @@ export class StreamingDelegate implements CameraStreamingDelegate {
         '-srtp_out_suite', audioSrtpSuite,
         '-srtp_out_params', audioSrtpParams,
         `srtp://${prepareRequest.targetAddress}:${prepareRequest.audio.port}` +
-          `?rtcpport=${localAudioPort}&localrtcpport=${localAudioPort}&pkt_size=188`,
+          `?rtcpport=${prepareRequest.audio.port}&localrtcpport=${localAudioPort}&pkt_size=188`,
       );
     }
 
