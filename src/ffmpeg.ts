@@ -27,13 +27,19 @@ export class FfmpegProcess {
   private stderrTail: string[] = [];
 
   constructor(ffmpegPath: string, args: string[], private readonly log: Logger, label: string, debug: boolean) {
-    this.log.debug(`[${label}] Spawning: ${ffmpegPath} ${args.join(' ')}`);
+    // `log.debug()` is gated by Homebridge's own global debug mode, which is a separate switch
+    // from this plugin's "Debug-Logging" setting - using it here meant the plugin's own debug
+    // toggle silently did nothing unless Homebridge itself was also launched in debug mode.
+    // `log.info()` always prints, so it's used here to make the plugin's own toggle self-contained.
+    if (debug) {
+      this.log.info(`[${label}] Spawning: ${ffmpegPath} ${args.join(' ')}`);
+    }
     this.process = spawn(ffmpegPath, args, { env: process.env });
 
     this.process.stderr.on('data', (chunk: Buffer) => {
       const text = chunk.toString();
       if (debug) {
-        this.log.debug(`[${label}] ${text.trim()}`);
+        this.log.info(`[${label}] ${text.trim()}`);
       }
       this.stderrTail.push(text);
       if (this.stderrTail.length > 50) {
