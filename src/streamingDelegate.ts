@@ -108,13 +108,22 @@ export class StreamingDelegate implements CameraStreamingDelegate {
           srtp_key: request.video.srtp_key,
           srtp_salt: request.video.srtp_salt,
         },
-        audio: {
+      };
+
+      // `audio` is optional on the response - HomeKit always sends audio SRTP parameters in the
+      // request regardless of what the accessory declared, but answering with a negotiated audio
+      // channel here promises HomeKit that packets will actually arrive on it. When audio is
+      // disabled, startStream() never sends any, so including this anyway left HomeKit waiting on
+      // an audio stream that would never start, observed as live view showing one video frame and
+      // then buffering indefinitely.
+      if (this.cameraConfig.enableAudio !== false) {
+        response.audio = {
           port: localAudioPort,
           ssrc: this.hap.CameraController.generateSynchronisationSource(),
           srtp_key: request.audio.srtp_key,
           srtp_salt: request.audio.srtp_salt,
-        },
-      };
+        };
+      }
 
       callback(undefined, response);
     } catch (error) {
